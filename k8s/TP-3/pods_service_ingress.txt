@@ -1,0 +1,103 @@
+### TP-3 service node-port, Loadbalancing à l'aide du service node-port, Ingress
+
+Ingress - liens utiles
+ * https://kubernetes.io/docs/tasks/access-application-cluster/ingress-minikube/
+ * https://kubernetes.github.io/ingress-nginx/deploy/#provider-specific-steps
+
+
+## Service nodeport
+
+# créer et lancer la création d'un ns nommé 'production' à partir d'un manifest
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+
+ kubectl apply -f namespace.yml
+ kubectl get namespaces
+<!-- kubectl get all -n kube-node-lease sert peut-être à mettre les nodes qui ne sont plus disponibles -->
+
+Toutes vos prochaines ressources doivent être créées dans ce ns 'production'
+
+# Lancer la création de 2 pods avec l'image mmumshad/simple-webapp-color à partir de manifest
+ * Le pod doit posséder le label 'app: web'
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp-color-red
+  labels:
+    app: web
+spec:
+  containers:
+  - name: web
+    image: mmumshad/simple-webapp-color 
+    ports:
+      - containerPort: 8080
+    env:
+      - name: APP_COLOR
+        value: red
+pod-red.yml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp-color-blue
+  labels:
+    app: web
+spec:
+  containers:
+  - name: web
+    image: mmumshad/simple-webapp-color 
+    ports:
+      - containerPort: 8080
+    env:
+      - name: APP_COLOR
+        value: blue
+
+pod-blue.yml
+
+# Lancer la création des deux pods
+ kubectl -n production apply -f pod-red.yml
+ kubectl -n production apply -f pod-blue.yml
+ kubectl get pod -n production   <-- attention nos pods sont crées dans le ns 'production' et pas dans 'default'
+
+# Exposer les pods via la création d'un service de type NodePort.
+ * Le nodeport devra être le 30000 et target les ports 8080 des pods dont le label est 'app: web'
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-nodeport-web
+spec:
+  type: NodePort
+  selector:
+    app: web
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8080
+    nodePort: 30000
+service-nodeport-web.yml
+
+# Lancer la création du svc
+ kubectl -n production apply -f service-nodeport-web.yml   
+<!-- il faut que le svc de type nodeport voit les pods donc il faut bien que ce soit dans le même ns -->
+
+# Vérifier que le service trouve les 2 pods (champ endpoint en utilisant la commande kubectl -n production describe svc)
+ kubectl -n production get svc
+ kubectl -n production describe svc service-nodeport-web   <-- on voit en sortie de cette commande 2 endpoints donc le service nodeport voit bien nos pods
+
+# Vérifier que l'application est bien disponible en ouvrant le port 30000 de votre noeud.
+ minikube service service-nodeport-web --url -n production
+http://51.77.109.105:30000
+ <-- Dans un navigateur web: http://51.77.109.105:30000
+ Hello from simple-webapp-color-red!
+ Hello from simple-webapp-color-blue!
+
+
+=> Notre svc nodeport (pt d'entrée unique, transparent permet bien de fédérer les 2 pods donc si on perd un pod 
+le service va continuer à renvoyer sur l'autre sans pour autant changer le pt d'entrée...
+--> loadbalancing à l'aide du service node-port
+
+
+## Ingress controller
