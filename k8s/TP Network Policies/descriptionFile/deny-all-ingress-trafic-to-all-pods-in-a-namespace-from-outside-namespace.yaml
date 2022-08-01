@@ -1,0 +1,11 @@
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  namespace: default
+  name: deny-all-ingress-trafic-to-all-pods-in-a-namespace-from-outside-namespace
+spec:
+  podSelector:
+    matchLabels:         
+  ingress:
+  - from:
+    - podSelector: {}

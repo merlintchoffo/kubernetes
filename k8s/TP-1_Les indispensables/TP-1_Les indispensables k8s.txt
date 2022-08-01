@@ -1,0 +1,122 @@
+### TP-1 Les indispensables dans k8s
+
+Pointeurs utiles
+https://blog.alterway.fr/le-point-sur-les-container-runtimes.html
+https://kubernetes.io/fr/docs/reference/kubectl/cheatsheet/#contexte-et-configuration-de-kubectl
+https://minikube.sigs.k8s.io/docs/drivers/none/#requirements
+<!-- For Kubernetes 1.24+ you need to also install cri-dockerd -->
+https://github.com/kubernetes/minikube/issues/14410#issuecomment-1171741503
+https://kubernetes.io/blog/2022/02/17/dockershim-faq/
+https://www.mirantis.com/blog/how-to-install-cri-dockerd-and-migrate-nodes-from-dockershim
+https://ubiqube.com/fr/dockershim-the-despair-of-depreciation-and-the-death-of-docker/
+
+### Composants et installation de kubernetes
+Pré-requis :
+Utilisez une VM de minimum 4 Go et 2 CPU, les commandes suivantes ont été testées sur centos7 et les commandes ont été exécutées avec le user centos qui a les droits admin
+
+sudo yum -y update
+sudo yum -y install epel-release
+sudo yum -y install git libvirt qemu-kvm virt-install virt-top libguestfs-tools bridge-utils
+sudo yum install socat -y
+sudo yum install -y conntrack
+sudo curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker centos
+sudo systemctl start docker
+sudo yum -y install wget
+sudo wget https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+sudo chmod +x minikube-linux-amd64
+sudo mv minikube-linux-amd64 /usr/bin/minikube
+sudo curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl
+sudo chmod +x kubectl
+sudo mv kubectl  /usr/bin/
+sudo echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+sudo systemctl enable docker.service
+(1) minikube start --driver=none
+/!\ none driver
+<!--- Users are unaware that minikube v1.26.0 requires a new dependency of cri-docker see https://github.com/kubernetes/minikube/issues/14410)
+    Installing cri-docker, installation instructions: https://github.com/Mirantis/cri-dockerd#build-and-install -->
+
+##  Finaliser l'installation: faire fonctionner la commande (1) minikube start --driver=none
+
+# Install cri-dockerd-0.2.3.amd64.tgz on Linux
+Consulter le lien https://computingforgeeks.com/install-mirantis-cri-dockerd-as-docker-engine-shim-for-kubernetes/
+<!--- Ensure Docker service is running before you proceed -->
+systemctl status docker
+<!--- Using ready binary -->
+VER=$(curl -s https://api.github.com/repos/Mirantis/cri-dockerd/releases/latest|grep tag_name | cut -d '"' -f 4|sed 's/v//g')
+echo $VER
+wget https://github.com/Mirantis/cri-dockerd/releases/download/v${VER}/cri-dockerd-${VER}.amd64.tgz
+tar xvf cri-dockerd-${VER}.amd64.tgz
+sudo mv cri-dockerd/cri-dockerd /usr/local/bin/
+cri-dockerd --version
+
+<!-- Configure systemd units for cri-dockerd:-->
+wget https://raw.githubusercontent.com/Mirantis/cri-dockerd/master/packaging/systemd/cri-docker.service
+wget https://raw.githubusercontent.com/Mirantis/cri-dockerd/master/packaging/systemd/cri-docker.socket
+sudo mv cri-docker.socket cri-docker.service /etc/systemd/system/
+sudo sed -i -e 's,/usr/bin/cri-dockerd,/usr/local/bin/cri-dockerd,' /etc/systemd/system/cri-docker.service
+sudo mv /usr/local/bin/cri-dockerd /usr/bin    <!-- Oh combien cette commande est importante pour le succès de la commande minikube start --driver=none --> 
+
+<!-- Start and enable the services -->
+sudo systemctl daemon-reload
+sudo systemctl enable cri-docker.service
+sudo systemctl enable --now cri-docker.socket
+systemctl status cri-docker.socket
+
+(1) sudo yum install -y kubelet
+:( No package kubelet available. Error: Nothing to do 
+# Configure Kubernetes Repository 
+Consulter le lien https://phoenixnap.com/kb/how-to-install-kubernetes-on-centos#ftoc-heading-3
+cat <<EOF > /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+EOF
+
+(2) sudo yum install -y kubelet
+:( Signature could not be verified for kubernetes \n Trying other mirror.
+sudo vim /etc/yum.repos.d/kubernetes.repo
+# changer repo_gpgcheck=1 en repo_gpgcheck=0
+
+(3) sudo yum install -y kubelet
+
+# Install cri-tools (dépendance minikube)
+Consulter le lien https://github.com/kubernetes-sigs/cri-tools#install-crictl
+VERSION="v1.24.1"
+wget https://github.com/kubernetes-sigs/cri-tools/releases/download/$VERSION/crictl-$VERSION-linux-amd64.tar.gz
+sudo tar zxvf crictl-$VERSION-linux-amd64.tar.gz -C /usr/local/bin
+rm -f crictl-$VERSION-linux-amd64.tar.gz
+which crictl
+sudo mv /usr/local/bin/crictl /usr/bin/
+
+(2) minikube start --driver=none
+ docker ps
+docker images
+
+* minikube v1.26.0 on Centos 7.9.2009 (kvm/amd64)
+* Using the none driver based on existing profile
+* Starting control plane node minikube in cluster minikube
+* Updating the running none "minikube" bare metal machine ...
+* OS release is CentOS Linux 7 (Core)
+* Preparing Kubernetes v1.24.1 on Docker 20.10.17 ...
+* Configuring local host environment ...
+...
+
+! kubectl and minikube configuration will be stored in /root
+! To use kubectl or minikube commands as your own user, you may need to relocate them. For example, to overwrite your own settings, run:
+*
+  - sudo mv /root/.kube /root/.minikube $HOME
+  - sudo chown -R $USER $HOME/.kube $HOME/.minikube
+...
+
+ Done! kubectl is now configured to use "minikube" cluster and "default" namespace by default
+
+ docker images
+ sudo kubectl get pods
+ sudo kubectl get nodes
+ sudo kubectl get nodes -o wide

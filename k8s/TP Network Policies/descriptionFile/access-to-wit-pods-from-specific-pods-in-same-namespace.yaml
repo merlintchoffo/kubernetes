@@ -1,0 +1,14 @@
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: access-to-wit-pods-from-specific-pods-in-same-namespace
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: wit      
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          wit-access: "true"

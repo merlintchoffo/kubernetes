@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debian
+spec:
+  containers:
+  - name: debian
+    image: debian:buster
+    command: ["bash", "-c"]
+    args:
+    - |
+      while true ;
+      do
+      date ; sleep 1
+      done

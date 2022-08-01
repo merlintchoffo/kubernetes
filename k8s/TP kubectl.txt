@@ -1,0 +1,55 @@
+### Commandes de base avec kubectl.
+
+# Lister les types de ressources existants
+kubectl api-resources
+
+# Obtenir des informations sur un type de ressource
+kubectl explain node
+
+# Obtenir encore plus de précisions...
+kubectl explain node.spec
+
+# Lister un type de ressources, par exemple les noeuds du cluster :
+kubectl get nodes
+
+# Obtenir une sortie plus détaillée avec -o wide :
+kubectl get nodes -o wide
+
+# Lister les Pods d'un Namespace particulier <!-- kubectl -n NAMESPACE get pods -->
+sudo kubectl -n default get pods
+kubectl -n kube-system get pods
+sudo kubectl -n kube-public get pods
+
+# Créer un objet <!-- kubectl -n NAMESPACE get pods -->
+Un objet peut être définie dans un fichier yaml ou json. 
+Créer un nouvel objet à partir d'un fichier :
+kubectl create -f mon-fichier.yaml
+ou bien avec un dossier complet :
+kubectl create -f mon-dossier
+ou encore :
+kubectl create TYPE NOM [options]
+
+# Modifier un objet 
+kubectl get TYPE NOM -o yaml --export > mon-fichier.yaml
+vi mon-fichier.yaml
+kubectl apply -f mon-fichier.yaml
+ou
+kubectl edit TYPE NOM
+
+# Supprimer un objet
+kubectl delete -f <mon-fichier.yaml>
+ou
+kubectl delete TYPE NOM
+
+## Auto-complétion avec Kubectl
+Consulter la page https://kubernetes.io/fr/docs/reference/kubectl/cheatsheet/
+<!-- Le paquet bash-completion doit être installé au préalable sur le système. -->
+echo $SHELL
+sudo yum search bash-completion
+sudo yum install bash-completion
+type _init_completion
+source <(kubectl completion bash)
+echo "source <(kubectl completion bash)" >> ~/.bashrc
+<!-- Vous pouvez de plus déclarer un alias pour kubectl qui fonctionne aussi avec l'auto-complétion :
+alias k=kubectl
+complete -o default -F __start_kubectl k  -->

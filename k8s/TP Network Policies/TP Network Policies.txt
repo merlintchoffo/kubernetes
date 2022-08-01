@@ -1,0 +1,736 @@
+### TP Network Policies
+
+Objectif: Découvrir la fonctionnalité Network Policies qui permet d'appliquer des règles réseaux entre les Pods.
+Source des schémas : https://github.com/ahmetb/kubernetes-network-policy-recipes
+
+Pointeurs utiles
+https://stackoverflow.com/questions/56973152/what-is-the-difference-between-ingress-value-as-blank-array-and-value
+https://github.com/kubernetes/minikube/issues/14410#issuecomment-1171741503
+
+Prérequis
+Afin de pouvoir utiliser les Network Policies, on doit avoir un cluster kubernetes avec un network plugin qui supporte les Network policies, par exemples :
+ Calico
+ Cilium
+ Kube-router
+ Romana
+ Weave Net
+
+## Mise en place
+
+# Créer un Deployment wit basé sur l'image xian310/who-is-there:3.
+<!-- Utiliser kubectl create deployment ...-->
+ sudo kubectl create deployment wit --image=xian310/who-is-there:3
+
+# Ajouter un second réplica
+ sudo kubectl scale deployment wit --replicas=2
+deployment.apps/wit scaled
+
+ kubectl get pods
+NAME                   READY   STATUS    RESTARTS   AGE
+wit-6bc5b586cd-4s426   1/1     Running   0          5s
+wit-6bc5b586cd-gm299   1/1     Running   0          2m10s
+
+
+# Exposer le Deployment via un service ClusterIP
+ sudo kubectl expose deployment wit --port=80 --target-port=8080 --type=NodePort
+service/wit exposed
+
+Les 2 Pods sont exposés via le service wit
+
+ sudo kubectl get service
+NAME   TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)        AGE
+wit    NodePort    10.96.108.240   <none>        80:30834/TCP   2m2s
+
+# Tester l'accès au service depuis le navigateur web
+ http://51.77.109.105:30834/
+Server v3 - Hello from host: wit-6bc5b586cd-gm299
+ou
+ curl -k http://51.77.109.105:30834/
+Server v3 - Hello from host: wit-6bc5b586cd-4s426
+
+Noter le basculement arbitraire vers des pods pour le navigateur et curl
+
+ kubectl get pods --show-labels
+NAME                   READY   STATUS    RESTARTS   AGE   LABELS
+wit-6bc5b586cd-4s426   1/1     Running   0          20m   app=wit,pod-template-hash=6bc5b586cd
+wit-6bc5b586cd-gm299   1/1     Running   0          22m   app=wit,pod-template-hash=6bc5b586cd
+
+# Tester l'accès au service depuis un Pod situé dans le même Namespace
+
+ - Créer un pod busybox, dans le même Namespace, basé sur l'image busybox. <!-- Utiliser kubectl run -ti ...-->
+ kubectl run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ #
+
+ - Tester l'accès aux Pods exposés par le Service wit. <!-- Utiliser wget -qO- --timeout=1 wit -->
+/ # wget -qO- --timeout=1 wit
+Server v3 - Hello from host: wit-6bc5b586cd-4s426
+
+
+# Tester l'accès au service depuis un Pod situé dans un autre Namespace.
+
+ - Créer un pod busybox dans un autre Namespace
+ kubectl create ns autre
+ kubectl -n autre run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ #
+<-- kubectl get namespace permet de voir que le nouveau ns est bien ajouté dans la liste des ns
+<-- dans un nouveau terminal, kubectl get pods all-namespaces affiche les pods en exécution dans leur ns
+ 
+ - Tester l'accès aux Pods exposés par le Service wit
+/ # wget -qO- --timeout=1 wit.default
+Server v3 - Hello from host: wit-6bc5b586cd-4s426
+
+
+## Interdire le trafic entrant vers les Pods d'un Namespace depuis partout
+
+-- > Bonne pratique : Cette règle devrait être appliquée systématiquement à tout nouveau Namespace afin de bloquer tous les accès par défaut 
+(y compris ceux internes au Namespace).
+
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: default-deny-all-ingress-traffic
+  namespace: default   <--- Namespace à protéger
+spec:
+  podSelector: {}      <--- Cible tous les Pods dans le Namespace default
+  ingress: []          <--- Interdit tout le trafic entrant
+default-deny-all-ingress-traffic.yaml
+
+[centos@b2-7-uk1 TP2]$ sudo kubectl create -f default-deny-all-ingress-traffic.yaml
+networkpolicy.networking.k8s.io/default-deny-all-ingress-traffic created
+
+<!-- la commande kubectl describe networkpolicy default-deny-all-ingress-traffic permet de vérifier la politique réseau désirée -->
+
+# Vérifier la présence de la nouvelle NetworkPolicy.
+[centos@b2-7-uk1 TP2]$ sudo kubectl get networkpolicies --all-namespaces
+NAMESPACE   NAME                               POD-SELECTOR
+default     default-deny-all-ingress-traffic   <none> 
+
+/!\ Le trafic entrant fonctionne ! Les règles ne s'appliquent donc pas puisqu'aucun network plugin n'est installé. 
+Les Network Policies doivent être implémentées par le plugin réseau choisi.
+Note: GKE uses calico for implementing network policy... 
+  
+Intégrer Calico dans un cluster minikube    <-- Pré-requis indispendable pour prendre en charge le réseau dans minikube (k8s)
+
+Pour installer, consulter la page https://thenewstack.io/install-calico-to-enhance-kubernetes-built-in-networking-capability/
+ curl https://docs.projectcalico.org/manifests/calico-typha.yaml -o calico.yaml     <-- installation de Calico
+ kubectl apply -f calico.yaml
+ curl -o calicoctl -O -L "https://github.com/projectcalico/calicoctl/releases/download/v3.19.1/calicoctl"    <-- outil de ligne de commande Calico
+ sudo mv calicoctl /usr/local/bin/
+ sudo chmod +x /usr/local/bin/calicoctl
+ calicoctl -h
+ watch kubectl get pods -l k8s-app=calico-node -A    <-- vérifier l'installation Calico dans le cluster
+Every 2.0s: kubectl get pods -l k8s-app=calico-node -A                                                         
+NAMESPACE     NAME                READY   STATUS    RESTARTS     
+kube-system   calico-node-jswkl   1/1     Running   3 (34m ago)   
+ 
+ kubectl get pod --namespace=kube-system
+ docker images
+
+Configurer minikube pour utiliser Calico: consulter la page https://projectcalico.docs.tigera.io/getting-started/kubernetes/minikube
+ [centos@b2-7-uk1 ~]$ sudo minikube start --driver=none --network-plugin=cni --cni=calico
+* minikube v1.26.0 on Centos 7.9.2009 (kvm/amd64)
+* Using the none driver based on existing profile
+* Starting control plane node minikube in cluster minikube
+* Updating the running none "minikube" bare metal machine ...
+* OS release is CentOS Linux 7 (Core)
+* Preparing Kubernetes v1.24.1 on Docker 20.10.17 ...
+* Configuring Calico (Container Networking Interface) ...   <-- Calico prise en charge par minikube; noter que cette ligne n'est pas présente dans une installation de base
+* Configuring local host environment ...
+...
+
+! kubectl and minikube configuration will be stored in /root
+! To use kubectl or minikube commands as your own user, you may need to relocate them. For example, to overwrite your own settings, run:
+*
+  - sudo mv /root/.kube /root/.minikube $HOME
+  - sudo chown -R $USER $HOME/.kube $HOME/.minikube
+...
+
+ Done! kubectl is now configured to use "minikube" cluster and "default" namespace by default
+
+--> Fermeture de la parenthèse et retour à l'exercice
+
+# Tester d'abord sans appliquer la règle, avec tout le trafic autorisé   <-- l'ingress n'est pas interdit: avec un navigateur, l'application répond depuis l'extérieur...
+[centos@b2-7-uk1 TP2]$ sudo kubectl delete -f default-deny-all-ingress-traffic.yaml
+networkpolicy.networking.k8s.io/default-deny-all-ingress-traffic deleted
+ vérifier dans votre navigateur que l'ingress n'est pas interdit
+
+[centos@b2-7-uk1 TP2]$ sudo kubectl get service
+NAME         TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)      
+kubernetes   ClusterIP   10.96.0.1      <none>        443/TCP        
+wit          NodePort    10.106.27.34   <none>        80:30182/TCP 
+
+# Ré-appliquer la règle d'interdiction et rafraîchir la page ouverte
+ kubectl create -f default-deny-all-ingress-traffic.yaml 
+  
+ <-- Dans le navigateur cette fois, on obtient un timeout ! le trafic externe n'est pas autorisé. 
+supprimer la règle et rafraîchir la page dans le navigateur pour voir que la règle s'applique comme attendu.
+
+ <-- Depuis le pod dans le même Namespace:
+[centos@b2-7-uk1 TP2]$ sudo kubectl run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit
+wget: download timed out
+
+ <-- Depuis le pod dans l'autre Namespace nommé 'autre':
+[centos@b2-7-uk1 TP2]$ sudo kubectl -n autre run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit.default
+wget: download timed out
+
+==> Pour l'instant aucun accès n'est possible dans le Namespace...
+
+
+## Autoriser le trafic entrant vers l'application wit depuis tous les Pods à l'intérieur du même Namespace
+
+--> Après avoir interdit tout le trafic dans et vers le Namespace, nous allons ouvrir les flux vers notre application de façon à la rendre accessible
+ par tous les pods à l'intérieur du même Namespace.
+
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: access-to-wit-pods-from-all-pods-in-same-namespace
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: wit      <--- Cible les Pods portant ce Label
+  ingress:
+  - from:
+      - podSelector: {}     <--- Autorise le trafic entrant
+                                 depuis tous les Pods du Namespace
+access-to-wit-pods-from-all-pods-in-same-namespace.yaml
+
+# Maintenir le deployment en cours et la règle appliquée
+NAMESPACE   NAME                               POD-SELECTOR  
+default     default-deny-all-ingress-traffic   <none>         
+
+# Appliquer la nouvelle règle 
+ kubectl create -f access-to-wit-pods-from-all-pods-in-same-namespace.yaml
+networkpolicy.networking.k8s.io/access-to-wit-pods-from-all-pods-in-same-namespace created
+
+# Vérifier la présence de la nouvelle NetworkPolicy.
+ kubectl get networkpolicies --all-namespaces
+NAMESPACE   NAME                                                 POD-SELECTOR   
+default     access-to-wit-pods-from-all-pods-in-same-namespace   app=wit        
+default     default-deny-all-ingress-traffic                     <none>                                                                        
+ 
+ kubectl describe networkpolicy access-to-wit-pods-from-all-pods-in-same-namespace
+Name:         access-to-wit-pods-from-all-pods-in-same-namespace
+Namespace:    default
+Created on:   2022-08-01 08:48:14 +0000 UTC
+Labels:       <none>
+Annotations:  <none>
+Spec:
+  PodSelector:     app=wit
+  Allowing ingress traffic:
+    To Port: <any> (traffic allowed to all ports)
+    From:
+      PodSelector: <none>
+  Not affecting egress traffic
+  Policy Types: Ingress
+
+# Ré-ppliquer la règle si elle n'est pas activée
+ kubectl create -f access-to-wit-pods-from-all-pods-in-same-namespace.yaml
+networkpolicy.networking.k8s.io/access-to-wit-pods-from-all-pods-in-same-namespace created
+
+# Tester de nouveau l'accès au service
+ 
+ <-- dans le navigateur web: récupérer le NodePort via kubectl get service
+ Timout !
+ <-- depuis le pod dans le même Namespace:
+ kubectl run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit
+Server v3 - Hello from host: wit-6bc5b586cd-z9xc7     <-- contrairement à tal, l'accès au service est autorisé depuis un pod situé le même ns, ici default
+
+ <-- depuis le pod dans l'autre Namespace nommé 'autre':
+ kubectl -n autre run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit.default
+wget: download timed out
+
+concl: * L'application est accessible uniquement par les Pods du même Namespace.
+       * Les autres applications présentes dans le même Namespace restent quant à elles inaccessibles.
+NetworkPolicy actuelle:
+ kubectl get networkpolicies --all-namespaces
+NAMESPACE   NAME                                                 POD-SELECTOR   
+default     access-to-wit-pods-from-all-pods-in-same-namespace   app=wit        
+default     default-deny-all-ingress-traffic                     <none>   
+
+
+## Autoriser le trafic entrant vers l'application wit depuis tous les Pods à l'intérieur du cluster
+
+Après avoir interdit tout le trafic dans et vers le Namespace, nous allons ouvrir les flux vers notre application de façon 
+à la rendre accessible par tous les Pods à l'intérieur du cluster.
+
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: access-to-wit-pods-from-inside-cluster
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: wit      <--- Cible les Pods portant ce Label
+  ingress:
+  - from:
+      - namespaceSelector: {}   <--- Autorise le trafic entrant
+                                     depuis tous les Namespaces
+access-to-wit-pods-from-inside-cluster.yaml
+
+# Supprimer la règle précédente
+ kubectl delete networkpolicy access-to-wit-pods-from-all-pods-in-same-namespace
+networkpolicy.networking.k8s.io "access-to-wit-pods-from-all-pods-in-same-namespace" deleted
+
+# Appliquer la nouvelle règle
+ kubectl create -f access-to-wit-pods-from-inside-cluster.yaml
+networkpolicy.networking.k8s.io/access-to-wit-pods-from-inside-cluster created
+
+# Vérifier la présence de la nouvelle NetworkPolicy
+ kubectl get networkpolicies --all-namespaces
+NAMESPACE   NAME                                                 POD-SELECTOR           
+default     access-to-wit-pods-from-inside-cluster               app=wit        
+default     default-deny-all-ingress-traffic                     <none>         
+
+
+# Tester de nouveau l'accès au service
+ 
+ <-- dans le navigateur web: récupérer le NodePort via kubectl get service 
+ Timout !
+
+ <-- depuis le pod dans le même Namespace:
+ kubectl run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit
+Server v3 - Hello from host: wit-6bc5b586cd-z9xc7     <-- comme tal, l'accès au service est autorisé depuis un pod situé le même ns, ici default
+
+ <-- depuis le pod dans l'autre Namespace nommé 'autre':
+ kubectl -n autre run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit.default
+Server v3 - Hello from host: wit-6bc5b586cd-z9xc7     <-- contrairement à tal, l'accès au service est autorisé depuis d'autres pods à l'intérieur du cluster
+
+concl: * L'application est accessible uniquement depuis l'intérieur du cluster (depuis les autres Pods).
+       * Les autres applications présentes dans le même Namespace restent quant à elles inaccessibles.
+NetworkPolicy actuelle:
+ kubectl get networkpolicies --all-namespaces
+NAMESPACE   NAME                                                 POD-SELECTOR           
+default     access-to-wit-pods-from-inside-cluster               app=wit        
+default     default-deny-all-ingress-traffic                     <none>    
+
+
+## Autoriser le trafic entrant vers l'application wit depuis tous les Pods à l'intérieur d'un Namespace spécifique
+
+Après avoir interdit tout le trafic dans et vers le Namespace, nous allons ouvrir les flux vers notre application de façon 
+à la rendre accessible par tous les Pods d'un ou plusieurs Namespaces spécifiques.
+
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: access-to-wit-pods-from-all-pods-in-specific-namespace
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: wit      <--- Cible les Pods portant ce Label
+  ingress:
+  - from:
+      - namespaceSelector:       <--- Autorise le trafic entrant
+          matchLabels:                vers les Namespaces portant
+            wit-access: "true"        le Label "wit-access: true"
+access-to-wit-pods-from-all-pods-in-specific-namespace.yaml
+
+# Supprimer la règle précédente
+ kubectl delete networkpolicy access-to-wit-pods-from-inside-cluster
+networkpolicy.networking.k8s.io "access-to-wit-pods-from-inside-cluster" deleted
+
+# Appliquer la nouvelle règle
+ kubectl create -f access-to-wit-pods-from-all-pods-in-specific-namespace.yaml
+networkpolicy.networking.k8s.io/access-to-wit-pods-from-all-pods-in-specific-namespace created
+
+# Vérifier la présence de la nouvelle NetworkPolicy
+ kubectl get networkpolicies --all-namespaces
+NAMESPACE   NAME                                                                     POD-SELECTOR           
+default     access-to-wit-pods-from-all-pods-in-specific-namespace                   app=wit        
+default     deny-all-ingress-traffic-to-all-pods-in-a-namespace-from-anywhere        <none>         
+
+# Tester de nouveau l'accès au service    <-- pour l'instant on va se prendre des Timeout dans chacune des situations envisagées
+
+ <-- dans le navigateur web (Ingress) 
+ Timout !
+
+ <-- depuis le pod dans le même Namespace:
+ kubectl run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit
+wget: download timed out     <-- contairement à tal, l'accès au service n'est plus autorisé depuis un pod situé le même ns, ici default
+
+ <-- depuis le pod dans l'autre Namespace nommé 'autre':
+ kubectl -n autre run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit.default
+wget: download timed out
+
+Pour l'instant aucun accès n'est possible... * Il nous faut ajouter un label sur le Namespace.
+
+# Ajouter le label wit-access=true sur le Namespace autre
+ kubectl label namespace autre wit-access=true
+namespace/autre labeled
+
+# Vérifier la bonne application des labels
+ kubectl get ns autre --show-labels
+NAME              STATUS   AGE    LABELS
+autre             Active   11h    kubernetes.io/metadata.name=autre,wit-access=true
+
+# Tester de nouveau l'accès au service
+
+ <-- dans le navigateur web: récupérer le NodePort via kubectl get service
+
+ <-- depuis le pod dans le même Namespace:
+ kubectl run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit
+wget: download timed out     <-- la situation est identique dans le ns default
+
+ <-- depuis le pod dans l'autre Namespace nommé 'autre':
+ kubectl -n autre run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit.default
+Server v3 - Hello from host: wit-6bc5b586cd-z9xc7  <-- contrairement à tal, l'accès au service est autorisé puisque le ns autre possède le bon label
+
+concl: * L'accès à l'application devient possible pour les Pods du Namespace portant le Label.
+       * Notez que si nous ajoutons le Label au Namespace _default_ l'application deviendra également accessible depuis ce Namespace.
+
+## Autoriser le trafic entrant vers l'application wit depuis partout
+
+Après avoir interdit tout le trafic dans et vers le Namespace, nous allons ouvrir les flux vers notre application de façon 
+à la rendre accessible de partout.
+
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: access-to-wit-pods-from-everywhere
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: wit      <--- Cible les Pods portant ce Label
+  ingress:
+  - {}              <--- Autorise tout le trafic entrant
+access-to-wit-pods-from-everywhere.yaml
+
+# Supprimer la règle précédente  
+<!-- La description deny-all-ingress-traffic-to-all-pods-in-a-namespace-from-anywhere.yaml est identique à default-deny-all-ingress-traffic.yaml -->
+ kubectl delete networkpolicy access-to-wit-pods-from-all-pods-in-specific-namespace
+networkpolicy.networking.k8s.io "access-to-wit-pods-from-all-pods-in-specific-namespace" deleted
+
+# Appliquer la nouvelle règle
+ kubectl create -f access-to-wit-pods-from-everywhere.yaml
+networkpolicy.networking.k8s.io/access-to-wit-pods-from-everywhere created
+
+# Vérifier la présence de la nouvelle NetworkPolicy
+ kubectl get networkpolicies --all-namespaces
+NAMESPACE   NAME                                 POD-SELECTOR   AGE
+default     access-to-wit-pods-from-everywhere   app=wit        5s
+default     default-deny-all-ingress-traffic     <none>         2m26s        
+
+# Tester de nouveau l'accès au service    <-- pour l'instant on va se prendre des Timeout dans chacune des situations envisagées
+
+ <-- dans le navigateur web: récupérer le NodePort via kubectl get services (ici 30182)
+ firefox http://xxx.xxx.xxx.xxx:30182/
+ Server v3 - Hello from host: wit-6bc5b586cd-p54x4
+
+ <-- depuis le pod dans le même Namespace:
+ kubectl run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit
+Server v3 - Hello from host: wit-6bc5b586cd-z9xc7
+
+ <-- depuis le pod dans l'autre Namespace nommé 'autre':
+ kubectl -n autre run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit.default
+Server v3 - Hello from host: wit-6bc5b586cd-z9xc7
+
+concl: * L'application est accessible de partout.
+       * Les autres applications présentes dans le même Namespace restent quant à elles inaccessibles.
+
+
+## Autoriser le trafic entrant vers l'application wit depuis certains Pods du même Namespace
+
+Utile par exemple pour donner un accès à une base de données depuis certains Pods seulement.
+
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: access-to-wit-pods-from-specific-pods-in-same-namespace
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: wit      <--- Cible les Pods portant ce Label
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          wit-access: "true"   <--- Autorise le trafic entrant pour les Pods
+                                    portant ce Label dans le même Namespace
+access-to-wit-pods-from-specific-pods-in-same-namespace.yaml
+
+# Supprimer la règle précédente  
+ kubectl delete networkpolicy access-to-wit-pods-from-everywhere
+networkpolicy.networking.k8s.io "access-to-wit-pods-from-everywhere" deleted
+
+# Appliquer la nouvelle règle
+ kubectl create -f access-to-wit-pods-from-specific-pods-in-same-namespace.yaml
+networkpolicy.networking.k8s.io/access-to-wit-pods-from-specific-pods-in-same-namespace created
+
+# Vérifier la présence de la nouvelle NetworkPolicy
+ kubectl get networkpolicies --all-namespaces
+NAMESPACE   NAME                                                      POD-SELECTOR   AGE
+default     access-to-wit-pods-from-specific-pods-in-same-namespace   app=wit        8s
+default     default-deny-all-ingress-traffic                          <none>         24m        
+
+# Tester de nouveau l'accès au service    <-- pour l'instant aucun accès n'est encore possible...
+
+ <-- dans le navigateur web: récupérer le NodePort via kubectl get services (ici 30182)
+ Timeout !
+
+ <-- depuis le pod dans le même Namespace:
+ kubectl run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit
+wget: download timed out
+
+ <-- depuis le pod dans l'autre Namespace nommé 'autre':
+ kubectl -n autre run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit.default
+wget: download timed out
+
+==> Pour l'instant aucun accès n'est encore possible...
+
+# Ajouter le label wit-access=true sur les deux Pods busybox
+ kubectl label pod busybox wit-access=true    <-- démarrer le pod busybox avant via kubectl run busybox --rm -ti --image=busybox /bin/sh
+pod/busybox labeled
+ kubectl label pod busybox wit-access=true -n autre
+pod/busybox labeled
+
+# Vérifier la bonne application des labels
+ kubectl get pods --all-namespaces --show-labels -l wit-access=true
+NAMESPACE   NAME      READY   STATUS    RESTARTS   AGE     LABELS
+autre       busybox   1/1     Running   0          2m45s   run=busybox,wit-access=true
+default     busybox   1/1     Running   0          35s     run=busybox,wit-access=true
+
+
+# Tester de nouveau l'accès au service    <-- pour l'instant aucun accès n'est encore possible...
+
+ <-- dans le navigateur web: récupérer le NodePort via kubectl get services (ici 30182)
+ Timeout !
+
+ <-- depuis le pod dans le même Namespace:
+ kubectl run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit
+Server v3 - Hello from host: wit-6bc5b586cd-p54x4
+
+ <-- depuis le pod dans l'autre Namespace nommé 'autre':
+ kubectl -n autre run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit.default
+wget: download timed out
+
+==> L'accès n'est bien possible que depuis les Pods taggués wit-access=true situés dans le même Namespace.
+
+# Supprimer les labels wit-access=true sur les Pods busybox
+ kubectl label pods busybox wit-access-
+pod/busybox unlabeled
+ kubectl label pods busybox wit-access- -n other
+
+# Vérifier que l'accès à wit est de nouveau interdit à partir du Pod busybox du même Namespace
+ <-- depuis le même Namespace:
+ kubectl run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit
+wget: download timed out
+
+## Autoriser le trafic entrant vers l'application wit depuis certains Pod seulement de certains Namespaces
+
+Attention : Cette fonctionnalité n'est disponible qu'à partir de Kubernetes v1.11. 
+De plus, la plupart des plugins réseaux ne la prennent pas encore en charge.
+
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: access-to-wit-pods-from-specific-pods-from-specific-namespacee
+spec:
+  podSelector:
+    matchLabels:
+      app: wit      <--- Cible les Pods portant ce Label
+  ingress:
+  - from:
+    - namespaceSelector:       <--- Autorise le trafic entrant
+        matchLabels:
+          wit-access: "true"        pour les Namespaces portant ce Label
+      podSelector:               
+        matchLabels:
+          wit-access: "true"        et les Pods portant ce Label
+access-to-wit-pods-from-specific-pods-from-specific-namespace.yaml
+
+# Supprimer la règle précédente  
+ kubectl delete networkpolicy access-to-wit-pods-from-specific-pods-in-same-namespace
+networkpolicy.networking.k8s.io "access-to-wit-pods-from-specific-pods-in-same-namespace" deleted
+
+# Appliquer la nouvelle règle
+ kubectl create -f access-to-wit-pods-from-specific-pods-from-specific-namespace.yaml
+networkpolicy.networking.k8s.io/access-to-wit-pods-from-specific-pods-from-specific-namespacee created
+
+# Ajouter le label wit-access=true sur le Namespace autre
+ kubectl label namespace autre wit-access=true
+namespace/autre labeled
+
+# Vérifier la bonne application des labels
+ kubectl get ns autre --show-labels
+NAME              STATUS   AGE    LABELS
+autre             Active   13h    kubernetes.io/metadata.name=autre,wit-access=true
+
+# Ajouter le label wit-access=true sur les deux Pods busybox
+ kubectl label pod busybox wit-access=true
+pod/busybox labeled
+ kubectl label pod busybox wit-access=true -n autre
+pod/busybox labeled
+
+# Vérifier la bonne application des labels
+ kubectl get pods --all-namespaces --show-labels -l wit-access=true
+NAMESPACE   NAME      READY   STATUS    RESTARTS   AGE     LABELS
+autre       busybox   1/1     Running   0          6m47s   run=busybox,wit-access=true
+default     busybox   1/1     Running   0          40s     run=busybox,wit-access=true
+
+# Tester de nouveau l'accès au service
+
+ <-- dans le navigateur web: récupérer le NodePort via kubectl get services (ici 30182)
+ Timeout !
+
+ <-- depuis le pod dans le même Namespace: ce ns ne match pas le label car n'en possède même pas.
+ kubectl run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit
+wget: download timed out
+
+ <-- depuis le pod dans l'autre Namespace nommé 'autre': ce ns possède le bon label
+ kubectl -n autre run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit.default
+Server v3 - Hello from host: wit-6bc5b586cd-z9xc7
+
+Ce résultat est confirmé par la commande:
+ kubectl get ns --show-labels
+NAME              STATUS   AGE   LABELS
+autre             Active   13h   kubernetes.io/metadata.name=autre,wit-access=true
+default           Active   13h   kubernetes.io/metadata.name=default
+kube-node-lease   Active   13h   kubernetes.io/metadata.name=kube-node-lease
+kube-public       Active   13h   kubernetes.io/metadata.name=kube-public
+kube-system       Active   13h   kubernetes.io/metadata.name=kube-system
+
+==> L'accès n'est possible que depuis le Pod dans le ns 'autre' (podSelector:->matchLabels:) mais pas depuis le pod dans le ns default
+ni depuis le navigateur web.
+
+# Interdire tout le trafic provenant des autres Namespaces
+
+Avec cette configuration, les Pods du Namespace :
+ * ne sont plus accessibles depuis l'extérieur du Namespace,
+ * peuvent continuer à communiquer librement entre eux.
+
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  namespace: default
+  name: deny-all-ingress-trafic-to-all-pods-in-a-namespace-from-outside-namespace
+spec:
+  podSelector:
+    matchLabels:         
+  ingress:
+  - from:
+    - podSelector: {}
+deny-all-ingress-trafic-to-all-pods-in-a-namespace-from-outside-namespace.yaml
+
+# Supprimer les politiques existantes
+ kubectl get networkpolicies --all-namespaces 
+No resources found
+
+# Appliquer la nouvelle règle
+ kubectl create -f deny-all-ingress-trafic-to-all-pods-in-a-namespace-from-outside-namespace.yaml
+networkpolicy.networking.k8s.io/deny-all-ingress-trafic-to-all-pods-in-a-namespace-from-outside-namespace created
+
+# Vérifier la présence de la NetworkPolicy
+ kubectl get networkpolicies --all-namespaces
+NAMESPACE   NAME                                                                        POD-SELECTOR   AGE
+default     deny-all-ingress-trafic-to-all-pods-in-a-namespace-from-outside-namespace   <none>         86s
+
+
+# Tester de nouveau l'accès au service
+
+ <-- dans le navigateur web: récupérer le NodePort via kubectl get services (ici 30182)
+ Timeout !
+
+ <-- depuis le pod dans le même Namespace
+ kubectl run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit
+Server v3 - Hello from host: wit-6bc5b586cd-p54x4
+
+ <-- depuis le pod dans l'autre Namespace nommé 'autre'
+ kubectl -n autre run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit.default
+wget: download timed out
+
+==> Seul l'accès interne au Namespace est possible...
+
+## Interdire tout le trafic entrant vers l'application wit
+
+Cette stratégie est utile pour interdire les accès à une application depuis d'autres Pods.
+
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: deny-all-ingress-trafic-to-wit-pods
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: wit      <--- Cible les Pods portant ce Label
+  ingress: []       <--- Interdit tout le trafic entrant
+deny-all-ingress-trafic-to-wit-pods.yaml
+
+# Supprimer les politiques existantes
+ kubectl get networkpolicies --all-namespaces 
+No resources found
+
+# Appliquer la nouvelle règle
+ kubectl create -f deny-all-ingress-trafic-to-wit-pods.yaml
+networkpolicy.networking.k8s.io/deny-all-ingress-trafic-to-wit-pods created
+
+# Tester l'accès au service
+
+ <-- dans le navigateur web: récupérer le NodePort via kubectl get services (ici 30182)
+ Timeout !
+
+ <-- depuis le pod dans le même Namespace
+ kubectl run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit
+wget: download timed out
+
+ <-- depuis le pod dans l'autre Namespace nommé 'autre'
+ kubectl -n autre run busybox --rm -ti --image=busybox /bin/sh
+If you don't see a command prompt, try pressing enter.
+/ # wget -qO- --timeout=1 wit.default
+wget: download timed out
+
+Sources :
+
+ * https://github.com/ahmetb/kubernetes-network-policy-recipes
+ * https://www.cncf.io/blog/2019/04/19/setting-up-kubernetes-network-policies-a-detailed-guide/

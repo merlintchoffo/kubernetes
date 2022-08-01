@@ -1,0 +1,5 @@
+### Comprendre la notion de Namespace de Kubernetes
+Après TP-2
+
+# Afficher les ns existants
+kubectl get pods --all-namespaces <!-- focus sur le ns default et kube-system -->

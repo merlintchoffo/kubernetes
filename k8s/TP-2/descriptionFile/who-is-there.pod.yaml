@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: who-is-there
+  labels:
+    app: who-is-there
+    version: v1
+spec:
+  containers:
+  - name: who-is-there
+    image: xian310/who-is-there:1
+

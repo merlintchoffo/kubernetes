@@ -1,0 +1,130 @@
+### TP-2 Déployez vos premières applications
+mkdir TP-2 && cd TP-2
+
+## Déploiement de votre premier pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp-color
+  labels:
+    app: web
+spec:
+  containers:
+  - name: web
+    image: mmumshad/simple-webapp-color
+    ports:
+      - containerPort: 8080
+    env:
+      - name: APP_COLOR
+        value: red
+pod.yml
+sudo kubectl apply -f pod.yml
+sudo kubectl get pods -o wide
+/!\ L'application ne s'ouvre pas dans le navigateur
+sudo kubectl port-forward simple-webapp-color 8080:8080 --address 0.0.0.0
+<!-- Là maintenant l'application se lance. 
+https://github.com/mmumshad/simple-webapp-color lien de l'application dockerisée -->
+
+## Création de votre déploiment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+spec:
+  replicas: 2 
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.18.0
+        ports:
+        - containerPort: 80
+nginx-deployment.yml
+
+[centos@b2-7-uk1 TP2]$ sudo kubectl apply -f nginx-deployment.yml && sudo     kubectl get replicaset -o wide
+deployment.apps/nginx-deployment configured <!-- il reconfigure, il ne recrée pas -->
+sudo kubectl get deploy <!-- à répéter dans un autre terminal -->
+sudo kubectl get replicaset <!-- sudo kubectl get rs fonctionne aussi -->
+sudo kubectl get pods
+sudo kubectl get replicaset -o wide <!-- à répéter dans un autre terminal: l'option -o wide donne en + l'image qui est en cours d'utilisation -->
+NAME                         DESIRED   CURRENT   READY   AGE   CONTAINERS   IMAGES         SELECTOR
+nginx-deployment-6dc6fccf5   2         2         0       0s    nginx        nginx:1.18.0   app=nginx,pod-template-hash=6dc6fccf5
+[centos@b2-7-uk1 TP2]$ sudo kubectl get replicaset -o wide
+NAME                         DESIRED   CURRENT   READY   AGE   CONTAINERS   IMAGES         SELECTOR
+nginx-deployment-6dc6fccf5   2         2         2       4s    nginx        nginx:1.18.0   app=nginx,pod-template-hash=6dc6fccf5
+Noter que le nom de notre replicaset provient du nom de notre deployment.
+
+
+# Mise à jour d'une application grâce aux objets deployment (recommandé pour déployer une application en production)
+Sans supprimer le déploiement en cours dans l'infrastructure, déployer nginx (latest)
+<!-- remplacer juste nginx:1.18.0 par nginx dans le fichier de déploiement)
+sudo kubectl apply -f nginx-deployment.yml && sudo kubectl get replicaset -o wide
+<!-- répéter aussi vite que possible l'exécution de la commande sudo kubectl get pods -o wide dans un autre shell -->
+Remarquer que la mise à jour est progressive, les 2 anciens réplica ne se terminent pas avant que les nouveaux sont disponibles 
+Scalabilité et résilience: on ne rend pas indispo directement l'application, on définit une stratégie de maj; ainsi on pourra faire évoluer l'app en douceur. 
+[centos@b2-7-uk1 TP2]$ sudo kubectl get replicaset -o wide
+NAME                         DESIRED   CURRENT   READY   AGE   CONTAINERS   IMAGES         SELECTOR
+nginx-deployment-6dc6fccf5   2         2         2       47s   nginx        nginx:1.18.0   app=nginx,pod-template-hash=6dc6fccf5
+[centos@b2-7-uk1 TP2]$ sudo kubectl get replicaset -o wide
+NAME                          DESIRED   CURRENT   READY   AGE   CONTAINERS   IMAGES         SELECTOR
+nginx-deployment-69795dd799   2         2         0       1s    nginx        nginx          app=nginx,pod-template-hash=69795dd799
+nginx-deployment-6dc6fccf5    1         1         1       73s   nginx        nginx:1.18.0   app=nginx,pod-template-hash=6dc6fccf5
+[centos@b2-7-uk1 TP2]$ sudo kubectl get replicaset -o wide
+NAME                          DESIRED   CURRENT   READY   AGE   CONTAINERS   IMAGES         SELECTOR
+nginx-deployment-69795dd799   2         2         2       2s    nginx        nginx          app=nginx,pod-template-hash=69795dd799
+nginx-deployment-6dc6fccf5    0         0         0       74s   nginx        nginx:1.18.0   app=nginx,pod-template-hash=6dc6fccf5
+
+## Mettre à jour la version de notre application à chaud
+Nettoyer votre environnement
+sudo kubectl delete -f nginx-deployment.yml
+sudo kubectl get deploy
+
+[centos@b2-7-uk1 TP2]$ sudo kubectl run --image mmumshad/simple-webapp-color \
+--env="APP_COLOR=green" \
+--restart=Never \
+simple-webapp-color
+pod/simple-webapp-color created <!-- Et voilà mon pod est crée -->
+sudo kubectl get po
+sudo kubectl port-forward simple-webapp-color 8080:8080 --address 0.0.0.0
+sudo kubectl delete pod simple-webapp-color <!-- sudo kubectl delete pod.yml fonctionne également pour la suppression du pod -->
+
+
+## Créer un deployment en ligne de commande
+sudo kubectl create deployment --image=nginx:1.18.0 nginx-deployment
+deployment.apps/nginx-deployment created
+[centos@b2-7-uk1 TP2]$ sudo kubectl get deployment.apps
+NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deployment   1/1     1            1           102s
+<!-- Noter qu'il y a qu'un seul replica car pas de possibilité de préciser de replica dans la ligne de commande. Voir ci-dessous: -->
+sudo kubectl scale --replicas=2 deployment/nginx-deployment
+[centos@b2-7-uk1 TP2]$ sudo kubectl get deployment.apps
+NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-deployment   2/2     2            2           5m50s
+<!-- Et là il a scalé, c'est passé à 2. Mtnt il me faut changer la version de l'image pour passer en latest -->
+sudo kubectl get deployment.apps -o wide
+[centos@b2-7-uk1 TP2]$ sudo kubectl set image deployment/nginx-deployment nginx=nginx
+deployment.apps/nginx-deployment image updated
+sudo kubectl get deployment.apps -o wide
+[centos@b2-7-uk1 TP2]$ sudo kubectl get replicasets.apps -o wide
+NAME                          DESIRED   CURRENT   READY   AGE    CONTAINERS   IMAGES         SELECTOR
+nginx-deployment-78769666b6   0         0         0       11m    nginx        nginx:1.18.0   app=nginx-deployment,pod-template-hash=78769666b6
+nginx-deployment-86cd79bd6b   2         2         2       109s   nginx        nginx          app=nginx-deployment,pod-template-hash=86cd79bd6b
+
+# Obtenez la description du déploiement
+kubectl describe deployment
+
+# Afficher les ns existants
+kubectl get pods --all-namespaces <!-- focus sur le ns default et kube-system -->

@@ -1,0 +1,105 @@
+### Comprendre la notion d'init container.
+
+Nous allons créer un Pod serveur web qui servira un site html statique dont les pages sont disponibles sur un dépôt git.
+
+Le conteneur serveur web sera basé sur l'image officielle httpd.
+
+La récupération du contenu du dépôt git sera réalisée par un conteneur d'init.
+
+# Créer le fichier de description de Pod suivant :
+apiVersion: v1
+kind: Pod
+metadata:
+  name: website
+  labels:
+    name: website
+spec:
+  containers:
+  - name: webserver
+    image: httpd
+website.pod.yml
+
+# Lancer le Pod
+[centos@b2-7-uk1 TP2]$ sudo kubectl create -f website.pod.yml
+pod/website created
+
+# Exposer le Pod via un service de type NodePort
+[centos@b2-7-uk1 TP2]$ sudo kubectl expose pod website --port 80 --type=NodePort
+service/website exposed
+
+# Récupération du port
+[centos@b2-7-uk1 TP2]$ sudo kubectl get service website
+NAME      TYPE       CLUSTER-IP    EXTERNAL-IP   PORT(S)        AGE
+website   NodePort   10.105.2.22   <none>        80:31496/TCP   68s
+
+# Accès à l'application
+$ firefox http://<host-ip>:31496/
+It works!
+
+<!-- L'image httpd sert par défaut le contenu du dossier /usr/local/apache2/htdocs.
+Nous allons ajouter un conteneur d'init dans le Pod qui sera chargé de cloner le dépôt git dans le dossier servi par httpd -->
+
+## Ajouter un conteneur d'init dans le Pod chargé de cloner le dépôt git dans le dossier servi par httpd
+
+# Modifier la description du Pod pour ajouter une section initContainers pour déclarer un conteneur :
+	nommé git-clone,
+	basé sur l'image debian:buster,
+	qui lance bash pour jouer les commandes :
+		installation du paquet git,
+		clonage du dépôt: https://github.com/mdn/beginner-html-site.git
+# L'échange de données entre les deux conteneurs se fera via un Volume de type emptyDir.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: website
+  labels:
+    name: website
+spec:
+  initContainers:
+  - name: git-clone
+    image: debian:buster
+    command: ["bash", "-c"]
+    args:
+    - |
+      apt update && apt install -y git &&
+      git clone https://github.com/mdn/beginner-html-site.git /workspace
+    volumeMounts:
+    - name: workspace
+      mountPath: /workspace
+  containers:
+  - name: webserver
+    image: httpd
+    volumeMounts:
+    - name: workspace
+      mountPath: /usr/local/apache2/htdocs
+  volumes:
+  - name: workspace
+    emptyDir: {}
+website-init.pod.yml
+
+# Lancer le Pod et accéder à l'application depuis le navigateur.
+[centos@b2-7-uk1 TP2]$ sudo kubectl create -f website-init.pod.yml
+pod/website created
+
+<!-- Démarrage de l'init container... -->
+
+[centos@b2-7-uk1 TP2]$ sudo kubectl get pods -o wide
+NAME      READY   STATUS     RESTARTS   AGE   IP           NODE       NOMINATED NODE   READINESS GATES
+website   0/1     Init:0/1   0          20s   172.17.0.3   b2-7-uk1   <none>           <none>
+
+<!-- Si succès -->
+
+[centos@b2-7-uk1 TP2]$ sudo kubectl get pods -o wide
+NAME      READY   STATUS    RESTARTS   AGE   IP           NODE       NOMINATED NODE   READINESS GATES
+website   1/1     Running   0          37s   172.17.0.3   b2-7-uk1   <none>           <none>
+
+<!-- Si une erreur est rencontrée -->
+
+[centos@b2-7-uk1 TP2]$ sudo kubectl get pods -o wide
+NAME      READY   STATUS    RESTARTS   AGE   IP           NODE       NOMINATED NODE   READINESS GATES
+website   0/1     Init:Error   1       31s   172.17.0.3   b2-7-uk1   <none>           <none>
+
+# Accès à l'application
+$ firefox http://<host-ip>:31496/
+Mozilla is cool
+...

@@ -1,0 +1,154 @@
+### Comprendre la notion de Pod de Kubernetes.
+Nous allons utiliser l'image docker xian310/who-is-there:1 qui est une application web minimaliste dont l'objectif est d'afficher le nom du pod 
+sur lequel elle est exécutée et tracer les connexions.
+
+## Template de Pod
+# Créer un fichier nommé who-is-there.pod.yaml
+# Ecrire dans ce fichier un template de Pod pour l'image docker xian310/who-is-there:1
+apiVersion: v1
+kind: Pod
+metadata:
+  name: who-is-there
+  labels:
+    app: who-is-there
+    version: v1
+spec:
+  containers:
+  - name: who-is-there
+    image: xian310/who-is-there:1
+who-is-there.pod.yaml
+
+# Utiliser la commande kubectl explain pour obtenir de l'aide sur la déclaration de l'objet
+ kubectl explain pod
+ kubectl explain pod.spec
+ kubectl explain pod.spec.containers
+
+# Créer l'objet Pod
+ kubectl create -f who-is-there.pod.yaml
+
+# Vérifier que le Pod est bien créé     <!-- Lister les Pods -->
+ kubectl get pods
+ kubectl get pods -o wide
+
+# Afficher des informations détaillées sur le Pod
+[centos@b2-7-uk1 TP2]$ sudo kubectl describe pod who-is-there
+Name:         who-is-there
+Namespace:    default
+Priority:     0
+Node:         b2-7-uk1/51.77.109.105
+Start Time:   Sun, 31 Jul 2022 10:58:59 +0000
+Labels:       app=who-is-there
+              version=v1
+Annotations:  <none>
+Status:       Running
+IP:           172.17.0.4
+IPs:
+  IP:  172.17.0.4
+Containers:
+  who-is-there:
+    Container ID:   docker://d42ecbc282edbf46389b85a174863dc9490fe99166eea7dc8a9                f74018f8091e7
+    Image:          xian310/who-is-there:1
+    Image ID:       docker-pullable://xian310/who-is-there@sha256:9bfa08ba0241b6                f28175f68e84c175625412911d242c6bb0f0629e811b537b8e
+    Port:           <none>
+    Host Port:      <none>
+    State:          Running
+      Started:      Sun, 31 Jul 2022 10:59:05 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-wtfwp (ro)
+...
+
+A la fin on trouve les évènements associés à l'objet :
+Events:
+  Type    Reason     Age    From               Message
+  ----    ------     ----   ----               -------
+  Normal  Scheduled  5m20s  default-scheduler  Successfully assigned default/who                -is-there to b2-7-uk1
+  Normal  Pulling    5m20s  kubelet            Pulling image "xian310/who-is-the                re:1"
+  Normal  Pulled     5m14s  kubelet            Successfully pulled image "xian31                0/who-is-there:1" in 5.64154575s
+  Normal  Created    5m14s  kubelet            Created container who-is-there
+  Normal  Started    5m14s  kubelet            Started container who-is-there
+
+ # Tenter d'accéder à l'application depuis l'intérieur du cluster en utilisant l'IP du Pod sur le port 8080
+[centos@b2-7-uk1 TP2]$ curl 172.17.0.4:8080
+Hello, this is host: who-is-there
+
+# Afficher les logs du Pod 
+[centos@b2-7-uk1 TP2]$ sudo kubectl logs -f who-is-there
+2022-07-31 10:59:05 - Server (version 1) started and listening on port 8080.
+2022-07-31 11:22:09 - who-is-there - Received a request from: 172.17.0.1
+<!-- -f indique de suivre les logs en temps réel, ne fonctionne que pour un seul Pod -->
+ou ouvrir un autre terminal
+ sudo kubectl port-forward who-is-there 80:8080 --address 0.0.0.0
+depuis le navigateur entrer http://51.77.109.105  <!-- consulter les logs -->
+
+# Editer l'objet Pod, modifier le label par exemple  <!-- nouveau label : whoo-is-there -->
+[centos@b2-7-uk1 TP2]$ sudo kubectl edit pod/who-is-there
+pod/who-is-there edited
+
+# Ouvrir une session dans le conteneur du Pod avec kubectl exec  <!-- Il faut indiquer un binaire à exécuter dans le conteneur, ici /bin/bash -->
+[centos@b2-7-uk1 TP2]$ sudo kubectl exec who-is-there -ti -- /bin/bash
+root@who-is-there:/# hostname
+who-is-there
+
+# Afficher les labels du Pod.
+[centos@b2-7-uk1 TP2]$ sudo kubectl get pod who-is-there --show-labels
+NAME           READY   STATUS    RESTARTS   AGE   LABELS
+who-is-there   1/1     Running   0          51m   app=whoo-is-there,version=v1
+
+# Afficher les pods qui possèdent le label app=whoo-is-there
+[centos@b2-7-uk1 TP2]$ sudo kubectl get pods --selector=app=whoo-is-there
+NAME           READY   STATUS    RESTARTS   AGE
+who-is-there   1/1     Running   0          63m
+
+# Ajouter le label env=prod au Pod.
+ kubectl label pod who-is-there env=prod
+
+# Retirer le label version=v1 du Pod
+ kubectl label pod who-is-there version-
+
+# Afficher les labels du Pod
+[centos@b2-7-uk1 TP2]$ sudo kubectl get pod who-is-there --show-labels
+NAME           READY   STATUS    RESTARTS   AGE   LABELS
+who-is-there   1/1     Running   0          69m   app=whoo-is-there,env=prod
+
+# Modifier le label env=prod en env=preprod.
+[centos@b2-7-uk1 TP2]$ sudo kubectl label pod who-is-there env=preprod
+error: 'env' already has a value (prod), and --overwrite is false
+ kubectl label pod who-is-there env=preprod --overwrite
+
+# Afficher les labels du Pod
+
+# Supprimer le Pod
+ kubectl delete pod who-is-there
+ou
+ kubectl delete -f who-is-there.pod.yaml
+
+# Lister les Pods
+ kubectl get pods
+
+# Passer des commandes à un Pod
+ Créer un fichier nommé debian-with-command.pod.yaml.
+ Le fichier déclare un Pod qui contient 1 conteneur basé sur l'image docker debian:buster.
+ Le conteneur utilise l'interpréteur Bash pour afficher la date toutes les secondes.
+ Créer le conteneur.
+ Suivre les logs du conteneur en temps réel.
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debian
+spec:
+  containers:
+  - name: debian
+    image: debian:buster
+    command: ["bash", "-c"]
+    args:
+    - |
+      while true ;
+      do
+      date ; sleep 1
+      done
+debian-with-command.pod.yaml
+sudo kubectl logs -f debian
