@@ -1,9 +1,5 @@
 ### TP-3 service node-port, Loadbalancing à l'aide du service node-port, Ingress
 
-Ingress - liens utiles
- * https://kubernetes.io/docs/tasks/access-application-cluster/ingress-minikube/
- * https://kubernetes.github.io/ingress-nginx/deploy/#provider-specific-steps
-
 
 ## Service nodeport
 
@@ -100,4 +96,210 @@ le service va continuer à renvoyer sur l'autre sans pour autant changer le pt d
 --> loadbalancing à l'aide du service node-port
 
 
+
+### Consommer nos applications depuis l'ext avec commodité et cohérence
+
+Ingress - liens utiles
+ * https://kubernetes.io/docs/tasks/access-application-cluster/ingress-minikube/
+ * https://kubernetes.github.io/ingress-nginx/deploy/#provider-specific-steps
+ * https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/  <-- plusieurs ingress controllers sont supportés
+
 ## Ingress controller
+Créer le controleur nginx qui va permettre de gérer le trafic venant de l'ext à partir d'un certain # de règles définies dans les ingress rules
+
+Objectif : déployer notre ingress controller afin de donner un accès depuis l'ext aux ressources que nous avons déployé dans notre cluster k8s.
+Pour ce TP, partons de la documentation officielle de k8s et dont le lien est ici. L'ex qu'on va prendre ici c'est minikube, très utilisé quand 
+il faut tester des choses rapidement et a des buts pédagogiques didactiques. Mais si vous êtes dans un cluster avec serveur, dans ce cas là partir 
+sur la documentation officielle ou on vous fera installer k8s sur un cluster à partir d'un fichier yaml. C'est la même chose que fait minikube...
+
+Si vous avez créé votre infra k8s par vous-même, donc un minikube qui se trouve sur votre machine locale ou dans le cloud aussi, dans ce cas 
+vous pouvez utilisé du coup la procédure indiquée ici: https://kubernetes.github.io/ingress-nginx/deploy/#provider-specific-steps (kubectl apply -f ...)
+
+# Aller sur https://kubernetes.io/docs/tasks/access-application-cluster/ingress-minikube/ et lancer votre cluster minikube via Launch Terminal
+<!-- du coup c'est hébergé par la société Katacoda, font beaucoup dans le learning experience, des env/plt de labs très très bien faits, 
+directement hébergé chez katacoda
+
+# Enable the Ingress controller  <-- les fichiers yaml seront appelés via la commande 'addons ingress' --> donc cliquer sur 'addons' ensuite 'ingress'
+ minikube addons enable ingress  <-- minikube fonctionne sur le principe d'addons (fichiers yml ..) --> donc cliquer sur 'addons' ensuite 'ingress'
+The 'ingress' addon is enabled
+
+# Verify that the NGINX Ingress controller is running <-- vérifier que les pods qui contiennent les services liés à nginx controller sont bien là !
+
+/!\ sur katacoda, le nom du ns dans la commande dépend de la version de minikube
+$ minikube version
+minikube version: v1.18.0  <-- donc faire:
+ kubectl get pods -n kube-system    <-- sur katacoda, ces services sont dans le ns kube-system
+ingress-nginx-admission-create-plpt4        0/1     Completed   0          6m23s
+ingress-nginx-admission-patch-g6mpz         0/1     Completed   0          6m22s
+ingress-nginx-controller-65cf89dc4f-245c4   1/1     Running     0          6m23s
+
+# Déployer l'application qui sera exposée grâce au principe d'ingress controller
+Lorsque l'ingress controller est déployé, on va crééer notre application : un deployment qui va utiliser l'image image=gcr.io/google-samples/hello-app:1.0
+ kubectl create deployment web --image=gcr.io/google-samples/hello-app:1.0
+image=gcr.io/google-samples/hello-app:1.0
+
+ kubectl get pods
+
+ kubectl get po  <-- j'ai bien mon pod ..
+NAME                   READY   STATUS    RESTARTS   AGE
+web-79d88c97d6-kllzg   1/1     Running   0          3m19s
+
+ kubectl get deploy  <-- j'ai bien mon deployment 
+NAME   READY   UP-TO-DATE   AVAILABLE   AGE
+web    1/1     1            1           3m58s
+
+# Créér le service de type nodeport qui va fédérer le deployment que je viens de crééer
+ kubectl expose deployment web --type=NodePort --port=8080
+service/web exposed
+
+# vérifier mon service  <-- mon service de type nodeport a été créé et je peux m'y conecter éventuellement via le port 31612 indiqué dans la réponse
+ kubectl get service web
+NAME   TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+web    NodePort   10.96.131.125   <none>        8080:31612/TCP   3m35s
+
+<-- pour se connecter, copier le port 31612, et je clique sur le + pour me connecter dessus: je prend bien
+  select port to view on Host 1, coller le port dans le champ prévu et cliquer sur Display Port. Et là je tombe sur mon application qui était exposée via
+le port 31612 de mon service de type nodeport. 
+Hello, world!
+Version: 1.0.0
+Hostname: web-79d88c97d6-kllzg
+
+# Visiter le service via nodeport
+  minikube service web --url  <-- donne l'url de mon service dans le cluster k8s parceque l'infra n'est pas hébergée en local chez nous mais chez Katacoda
+http://10.0.0.8:31612         <-- adresse IP privée chez Katacoda
+
+=> Donc l'application maintenant est déployée, on va passer du coup à la création de notre règle ingress .
+On a l'ingress controller mais il ne sait pas encore quelles sont les différentes règles qu'il devra appliquer
+
+
+## ingress rule
+Après avoir vérifié le focntionnement de l'appli et également du service, on passe à la création de la règle ingress
+# créér le fichier nano example-ingress.yaml et y coller le contenu
+apiVersion: networking.k8s.io/v1   
+kind: Ingress
+metadata:
+  name: example-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+spec:   
+  rules:  
+    - host: hello-world.info
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 8080
+example-ingress.yaml
+
+# Create the Ingress object by running the following command:
+ kubectl apply -f example-ingress.yaml
+ingress.networking.k8s.io/example-ingress created
+
+# Verify the IP address is set:
+ kubectl get ingress    <-- attendre l'adresse IP ...
+NAME              CLASS    HOSTS              ADDRESS    PORTS   AGE
+example-ingress   <none>   hello-world.info   10.0.0.8   80      119s
+
+=> Lorsque c'est fait on peut donc tenter d'accéder à notre application qui est derrière un service via hello-world.info
+  Sauf que ce nom n'est pas connu de notre système.
+
+# Add the following line to the bottom of the /etc/hosts file on your computer (you will need administrator access):
+ nano /etc/hosts
+ 10.0.0.8   hello-world.info   <-- on créé cette entrée dns sur le serveur en utilisant les informations de sortie de la commande kubectl get ingress
+
+Et maintenant je vais essayer de consommer mon service comme si je venais de l'extérieur
+ curl hello-world.info
+Hello, world!
+Version: 1.0.0
+Hostname: web-79d88c97d6-kllzg
+
+=> Nous venons de créer une règle qui fait en sorte que lorsqu'on attaque notre serveur avec le nom de domaine hello-world.info alors 
+il me renvoie immédiatement vers le service que j'ai créé: web
+
+On va aller un peu plus loin: on va mep une 2ème application pour mieux comprendre le principe de règle et comment le trafic sera distribué
+
+# créér une 2ème application
+kubectl create deployment web2 --image=gcr.io/google-samples/hello-app:2.0
+deployment.apps/web2 created
+
+# Expose the second Deployment:
+kubectl expose deployment web2 --port=8080 --type=NodePort
+service/web2 exposed
+
+# Modifier le fichier ingress précédent example-ingress.yaml pour ajouter une nouvelle règle
+apiVersion: networking.k8s.io/v1   
+kind: Ingress
+metadata:
+  name: example-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+spec:   
+  rules:  
+    - host: hello-world.info
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 8080
+          - path: /v2
+            pathType: Prefix
+            backend:
+              service:
+                name: web2
+                port:
+                  number: 8080
+example-ingress.yaml modifié
+
+ kubectl apply -f example-ingress.yaml
+ingress.networking.k8s.io/example-ingress configured
+
+Si je refais mon curl 
+ curl hello-world.info/v2
+Hello, world!
+Version: 2.0.0
+Hostname: web2-5d47994f45-jv4xv
+
+Si je liste mes services
+ kubectl get svc  <-- j'ai effectivement 2 services et on a été renvoyé vers web2, il suffit d'ouvrir sur le port 30003 via l'interface Katacoda pour le confirmer
+kubectl get svc
+NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+kubernetes   ClusterIP   10.96.0.1       <none>        443/TCP          59m
+web          NodePort    xx.xx.xx.xx     <none>        8080:31612/TCP   56m
+web2         NodePort    10.102.121.10   <none>        8080:32675/TCP   40m
+Hello, world!
+Version: 2.0.0
+Hostname: web2-5d47994f45-jv4xv
+
+
+Note : si infrastructure en entreprise, on aurait eu une @ip publique et on aurait pu faire pointer ce nom dns sur l'@ip publique de notre machine 
+et là on aurait eu accès depuis l'ext à partir de ce nom. Les règles ingress sont là pour nous aider à définir quel trafic ira où, en fonction de ce que 
+l'utilisateur doit fournir ...
+
+
+
+## minikube sur une machine dans le cloud ou locale <-- consulter la page https://kubernetes.github.io/ingress-nginx/deploy/#provider-specific-steps
+
+# use a YAML manifest, you can run the following command instead:
+ kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.3.0/deploy/static/provider/cloud/deploy.yaml
+
+# vérifier que les pods qui contiennent les services liés à nginx controller sont bien là, dans le ns ingress-nginx 
+ kubectl get pods --namespace=ingress-nginx   <-- ou bien
+NAME                                        READY   STATUS      RESTARTS   AGE
+ingress-nginx-admission-create-lkrnr        0/1     Completed   0          xm
+ingress-nginx-admission-patch-4zh2v         0/1     Completed   1          xm
+ingress-nginx-controller-6bf7bc7f94-sv4l8   1/1     Running     0          xm
+
+Au bout d'un moment, ils devraient tous fonctionner. La commande suivante attendra que le pod du contrôleur ingress soit opérationnel, 
+en cours d'exécution et prêt :
+ kubectl wait --namespace ingress-nginx \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/component=controller \
+  --timeout=120s

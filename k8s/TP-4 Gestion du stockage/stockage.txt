@@ -1,0 +1,203 @@
+### TP-4 Gestion du stockage
+
+Objectif : rendre la donnée persistante au delà du cycle de vie de votre simple conteneur/Pod
+
+Stockage- liens utiles
+ * https://hub.docker.com/_/mysql?tab=description
+
+
+## Créer un Pod mysql qui consomme un volume local (pas recommandé)
+
+# Déployer un pod (nommé mysql-volume) mysql à partir d'un manifest mysql-volume.yml, avec les paramètres d'environnement suivants : 
+ - database:orsystraining
+ - login:pix
+ - mot de passe:acceisorsysk8s
+ - mot de passe compte root:alphaacceisorsysk8s
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mysql-volume
+spec:
+  containers:
+  - image: mysql
+    name: mysql
+    volumeMounts:
+    - mountPath: /var/lib/mysql
+      name: mysql-data
+    env:
+      - name: MYSQL_ROOT_PASSWORD
+        value: betaacceisorsysk8s
+      - name: MYSQL_DATABASE
+        value: orsystraining
+      - name: MYSQL_USER
+        value: pix
+      - name: MYSQL_PASSWORD
+        value: acceisorsysk8s
+  volumes:
+  - name: mysql-data
+    hostPath:
+      # chemin du dossier sur l'hôte
+      path: /data-volume
+      # ce champ est optionnel
+      type: Directory
+mysql-volume.yml
+
+# Lancer la création du pod
+ kubectl apply -f mysql-volume.yml  <-- erreur car le volume data-volume n'existe pas sur l'hôte, ici notre vm
+pod/mysql-volume created
+
+ kubectl get pods  <-- répéter le commande pour voir que le pod ne sort pas du mode création: 'ContainerCreating' ...
+NAME                   READY   STATUS              RESTARTS   AGE
+mysql-volume           0/1     ContainerCreating   0          11m
+
+ kubectl describe pod mysql-volume
+...
+Events:
+  Type     Reason       Age                From               Message
+  ----     ------       ----               ----               -------
+  Normal   Scheduled    75s                default-scheduler  Successfully assigned default/mysql-volume to b2-7-uk1
+  Warning  FailedMount  11s (x8 over 75s)  kubelet            MountVolume.SetUp failed for volume "mysql-data" : hostPath type                         
+ check failed: /data-volume is not a directory
+
+# Supprimer le pod, créer le rép data-volume et recréér le pod
+ kubectl delete pod mysql-volume
+ sudo mkdir /data-volume
+ kubectl apply -f mysql-volume.yml
+ docker images
+ kubectl get pods  <-- répéter le commande pour voir que le pod ne change pas de statut 'ContainerCreating' ...
+NAME                   READY   STATUS              RESTARTS   AGE
+mysql-volume           1/1     Running             0          30s
+
+ kubectl describe pod mysql-volume
+...
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Scheduled  102s  default-scheduler  Successfully assigned default/mysql-volume to b2-7-uk1
+  Normal  Pulling    100s  kubelet            Pulling image "mysql"
+  Normal  Pulled     83s   kubelet            Successfully pulled image "mysql" in 17.489998615s
+  Normal  Created    82s   kubelet            Created container mysql
+  Normal  Started    82s   kubelet            Started container mysql
+
+# Valider la création du volume
+ ls /data-volume
+<! -- on a des fichiers => les données de notre pod/conteneur sont bien stockées en local; donc je peux supprimer mon conteneur
+ et k8s via mon pod va redéployer un nouveau conteneur, et le conteneur consommera immédiatement les mêmes données en question -->
+
+# Supprimer votre pod  <-- remarquer que le stockage et mes données sont toujours là, même si je supprime mon pod
+ kubectl delete pod mysql-volume
+ ls /data-volume
+ 
+=> Les données sur ce volume pourraient être consommées ou backupées, MAIS c'est au développeur de faire cette tâche là. C'est pour ça qu'on a
+les PV, ça permet de créer un cluster de stockage et chaque dév pourrait simplement venir consommer et c'est gérer de façon centralisée
+
+
+## Créer un stockage de type cluster qui pourrait être consommé par les pods au travers de la notion de Persistent Volume
+
+# écrivez un volume persistent pv.yml (de taille 1 Go utilisant le dossier local /data-pv pour stocker les données)
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/data-pv"
+pv.yml
+
+ kubectl apply -f pv.yml
+persistentvolume/pv created
+
+ kubectl get pv
+NAME   CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM   STORAGECLASS   REASON   AGE
+pv     1Gi        RWO            Retain           Available           manual                  65s
+
+ kubectl describe pv pv  <-- remarquer que dans ce cas, il n y a pas eu besoin de créer le volume pour créer le stockage
+
+==> ça c'est que l'admin fait. Ensuite on dit à l'admin qu'il y a mysql qui a besoin de données donc il faut que tu lui prépares un PVC .
+
+# écrivez un volume persistent pvc.yml (volume persistent claim de taille 100 Mo utilisant le PV précédemment créé pour stocker les données)
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+pvc.yml
+
+ kubectl apply -f pvc.yml
+persistentvolumeclaim/pvc created
+
+ kubectl get pvc  <-- le vol sur lequel mon PVC est bindé c'est bien PV; la règle dans k8s c'est 1 PVC pour 1 PV et inversément (bijection) 
+NAME   STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+pvc    Bound    pv       1Gi        RWO            manual         63s
+
+ kubectl describe pv pv <-- Réafficher à nouveau le describe de mon PV: le claim qu'il y a dessus est nommé pvc et qui se trouve dans le ns default
+...
+Claim: default/pvc
+...
+ => Là actuellement plus aucun PVC ne peut consommer mon PV, là il est condamné !
+    Alors, maintenant il faut que je créé mon pod qui va consommer ce PVC là.
+Et comme on a dit le PV permet de faire du stockage de type clustering donc peu importe où mon pod sera envoyé sur le cluster, 
+mon stockage sera valable sur tous les noeuds de mon cluster d'où la necessité de centraliser la gestion de nos volumes grâce aux PV. 
+
+
+# Déployer (créér et lancer) votre mysql (nommé mysql-pv) à partir d'un manifest mysql-pv.yml comme précédemment, à la seule différence qu'il utilisera 
+ comme volume de stockage le PVC créé précédemment càd le pod va consommer ce PVC
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mysql-pv
+spec:
+  containers:
+  - image: mysql
+    name: mysql
+    volumeMounts:
+    - mountPath: /var/lib/mysql
+      name: mysql-data
+    env:
+      - name: MYSQL_ROOT_PASSWORD
+        value: betaacceisorsysk8s
+      - name: MYSQL_DATABASE
+        value: orsystraining
+      - name: MYSQL_USER
+        value: pix
+      - name: MYSQL_PASSWORD
+        value: acceisorsysk8s
+  volumes:
+  - name: mysql-data
+    persistentVolumeClaim:
+      claimName: pvc
+mysql-pv.yml
+
+ kubectl apply -f mysql-pv.yml
+pod/mysql-pv created
+
+ kubectl describe pod mysql-pv  <-- il a bien crée le pod
+
+ kubectl get pods  <-- mon pod est bien dispo
+NAME                   READY   STATUS    RESTARTS   AGE
+mysql-pv               1/1     Running   0          45s
+
+=> Là actuellement, j'ai rendu mon volume persistent et disponible sur tout le cluster. Et là, le stockage est bien géré par les administrateurs en charge du cluster. 
+  c'est ça qui est intéressant; en effet au delà des volumes qu'on a vu dans la première partie du TP, avec les PV on permet ainsi à notre pod 
+  d'être déplacé et d'aller vers un autre hôte. On rend dispo le stockage et chaque dév dit : j'ai besoin de ceci ou cela, et on provisionne 
+  simplement la ressource à l'aide d'un PVC et on lui dit: utilise ce PVC là !
+
+# vérifier bien que votre pod consomme bien le stockage
+ ls /data-pv  <-- mes données sont bien dans data-pv qui a été décrit dans mon pv.yml comme l'emplacement de stockage les données en question

@@ -1,0 +1,250 @@
+### TP Gestion d'utilisateurs
+
+ * Créer un utilisateur avec des droits limités à un unique namespace.
+
+
+ * Comprendre le RBAC (Role Based Access Control) de Kubernetes.
+
+
+ * Dans ce TP nous allons créer un utilisateur pippin appartenant au groupe westeros.
+
+
+ * Nous ajouterons les règles RBAC nécessaires afin que pippin puisse gérer des Deployments et utiliser kubectl seulement à l'intérieur du namespace le-mur.
+
+
+ * Nous testerons ces règles afin de s'assurer qu'elles fonctionnent comme attendu.
+
+
+ liens utiles
+ * https://kubernetes.io/docs/reference/access-authn-authz/certificate-signing-requests/
+ * https://cloud.google.com/kubernetes-engine/docs/deprecations/apis-1-22  <--  voir signataires Kubernetes connus
+ * https://www.pulumi.com/registry/packages/kubernetes/api-docs/certificates/v1/certificatesigningrequest/
+
+
+## Création des Namespaces
+
+# Créer deux Namespaces nommés le-mur et les-marcheurs-blancs.
+ kubectl create namespace le-mur
+namespace/le-mur created
+
+ kubectl create namespace les-marcheurs-blancs
+namespace/les-marcheurs-blancs created
+
+## Génération d'une demande de signature de certificat pour pippin
+
+ * Créer le dossier certs et se positionner dedans.
+   mkdir certs
+   cd certs
+
+ * Créer une clé privée pour l'utilisateur pippin
+   openssl genrsa -out pippin.key 2048
+Generating RSA private key, 2048 bit long modulus
+...........................+++
+......................................................................................+++
+e is 65537 (0x10001)
+
+ * Créer une demande de signature de certificat
+   openssl req -new -key pippin.key -out pippin.csr \
+  -subj "/CN=pippin/O=westeros"
+
+Fichiers générés
+ ls -l
+total 8
+pippin.csr
+pippin.key
+
+## Génération du certificat pour Snow par Kubernetes  <-- consulter la page https://kubernetes.io/docs/reference/access-authn-authz/certificate-signing-requests/
+
+ * Créer une ressource de type CertificateSigningRequest pour importer la demande de certificat dans Kubernetes.
+ kubectl create -f csr.yaml
+Certificatesigningrequest.certificates.k8s.io/pippin created
+<!-- Pour obtenir la valeur à positionner dans le champ request il faut exporter le csr au format base64 : -->
+ base64 pippin.csr | tr -d '\n'
+
+apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: pippin
+spec:
+  groups:
+  - system:authenticated
+  request: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlJQ1p6Q0NBVThDQVFBd0lqRU5NQXNHQTFVRUF3d0VjMjV2ZHpFUk1BOEdBMVVFQ2d3SWQyVnpkR1Z5YjNNdwpnZ0VpTUEwR0NTcUdTSWIzRFFFQkFRVUFBNElCRHdBd2dnRUtBb0lCQVF\
+EWDFWVVpic3hGb2hBQUJzVXl4MUJhClJhaisvYnJndHdnRU9kS2t6Z1h1cC9EQkt2Y2lxcVpMOWVZMTJBblQvVTVkY2NrYTNkSk9KbEVCeWVsNnRpaVUKZEFGVzFUMDQ5QmFQWUZTd1hZejdQK21GcHUzcUdKQkkyOS9WN2lKa0ZoSjFMWitkYi9GKzRKMWl2OWM3bkRuVgp\
+GRk9yUFZWdkRvQWkzeXlhN21NZGttOTMxZGJYSGQweFVmbHFHWTF0QTBpNmZKSnUwSzZvT1M3UitKQmt1ZE9ECmt0R2I3YW5mdXU0N2ZrbDl5blIvUHJYM3Q2cWo1K2wvTG1DU2VTRUIzaTVwQ1ZXRVRrRFIrUE0yMkRiMjZhQWEKUkJQNWlFYjNOcnRzK3ZOY1phYmNLcUEr\
+ZDVEdEcwM1IyczNUbEZDcFhnbVU5WHhSeUtub2VZNHhVNHdVaUJzegpBZ01CQUFHZ0FEQU5CZ2txaGtpRzl3MEJBUXNGQUFPQ0FRRUFlVEY2cERGcFk2NXNSWllXcVl4QldTUzdTalFDCnpsWWJob0RKWWNnS0Q4U2ZvTG1kZmMzbEpRTFVISkZLZCttRGFFUXFhYk11TEdF\
+VWJnK0hmaFZ3ZldkeVdsUEkKbVk1TWhsSDFJUmFUWUM3SkRQMDNkUURPRlgzQ2FYSEtmNUh3V3g2T0hQa3hINXJUVm5JQS9SMEczSUNneUtubgpGTXFheE1LaFIrRzczZ2VCd2dRWm9tRTRodERhVjdIRkliY1FjUUw4VUdTRTJmQ21GL1EwWG5EcW5LSGZDek1NCjJWc3ZO\
+VVprNk12ckRuKzVMZHVyMm9XUEw0cWlqTUZFYUVFT0pGWVB2QUN0TDM1ZTRXVHRLUU9yVmRuZlVwZXcKa1J5TnhqR1p5d1V3ZkthMlF1eHRGeHM0WmpvbXlXWlRhaC9odXpTNkY5NFlLNklzOFhEWEYxT24wUT09Ci0tLS0tRU5EIENFUlRJRklDQVRFIFJFUVVFU1QtLS0tLQo="
+  signerName: kubernetes.io/kube-apiserver-client
+  usages:
+  - client auth
+csr.yaml
+
+
+ Vérifier l'état de la ressource CertificateSigningRequest :
+ kubectl get csr
+NAME   AGE     SIGNERNAME                            REQUESTOR       CONDITION
+pippin   5m49s   kubernetes.io/kube-apiserver-client   minikube-user   Pending
+
+ Approuver la ressource CertificateSigningRequest :
+ kubectl certificate approve pippin
+certificatesigningrequest.certificates.k8s.io/pippin approved
+
+ Vérifier l'état de la ressource CertificateSigningRequest :
+ kubectl get csr
+NAME   AGE   SIGNERNAME                            REQUESTOR       CONDITION
+pippin   14m   kubernetes.io/kube-apiserver-client   minikube-user   Approved,Issued
+
+ Extraire le certificat signé de la ressource CertificateSigningRequest :
+ 1ère méthode:
+ kubectl get csr/pippin -o yaml
+ kubectl get csr pippin -o jsonpath='{.status.certificate}'| base64 -d > pippin.crt
+
+ 2ème méthode:
+ kubectl get csr pippin -o yaml | grep 'certificate:' \
+  | cut -d' ' -f4 | base64 -d > pippin.crt
+
+Fichiers générés
+ ls -1
+pippin.crt
+pippin.csr
+csr.yaml
+pippin.key
+
+
+
+## Créer un contexte kubectl pour pippin  <-- consulter la page https://kubernetes.io/docs/reference/access-authn-authz/certificate-signing-requests/
+
+# A l'aide de la commande kubectl config set-context..., créer un nouveau contexte nommé pippin pour :
+ * l'utilisateur pippin,
+ * dans le namespace le-mur,
+ * sur le cluster kubernetes.
+
+  kubectl config set-context pippin \
+>   --cluster=kubernetes \
+>   --namespace=le-mur \
+>   --user=pippin
+Context "pippin" created.
+
+# Ajouter les informations d'authentification <-- remplacer myuser par pippin pour exécuter la commande
+
+ kubectl config set-credentials myuser \
+  --client-certificate=/path/to/certs/myuser.crt \
+  --client-key=/path/to/certs/myuser.key \
+  --embed-certs=true                           <--- Inclure les certificats dans .kube/config
+User "myuser" set. 
+
+ kubectl config set-credentials pippin \
+>   --client-certificate=/home/centos/TP_Gestion_dutilisateurs/certs/pippin.crt \
+>   --client-key=/home/centos/TP_Gestion_dutilisateurs/certs/pippin.key \
+>   --embed-certs=true                  <--- Inclure les certificats dans .kube/config
+User "pippin" set.                     
+
+# lister les contextes :
+ kubectl config get-contexts
+
+# utiliser le contexte :
+ kubectl config use-context pippin
+Switched to context "pippin".
+
+
+## Test de requête sur l'API
+
+# Lister les Pods
+ kubectl get pods
+Error from server (Forbidden): pods is forbidden:
+User "pippin" cannot list resource "pods" in API group ""
+in the namespace "le-mur"
+
+L'utilisateur pippin est bien authentifié mais n'a pas le droit d'effectuer cette requête.
+
+# Rebasculer sur le contexte minikube ou kubernetes-admin.
+  kubectl config use-context minikube
+Switched to context "minikube".
+
+ kubectl config use-context kubernetes-admin@kubernetes
+Switched to context "kubernetes-admin@kubernetes".
+
+
+# Vérifier si l'utilisateur pippin possède le droit de lister les Pods dans le Namespace le-mur.
+ kubectl auth can-i create pod --as=pippin --namespace=le-mur
+no
+
+==> Il faut donc maintenant autoriser cette requête à l'aide du système de droits RBAC.
+
+
+## Role Based Access Control
+
+# Créer un Role qui autorise toutes les opérations sur les objets Deployments, Pods et ReplicaSets au sein du namespace le-mur.
+
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: le-mur
+  name: allow-to-deploy-in-ns-la-comte
+rules:
+- apiGroups: ["", "extensions", "apps"]
+  resources: ["deployments", "replicasets", "pods"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+allow-to-deploy-in-ns-le-mur.yaml
+
+ kubectl create -f allow-to-deploy-in-ns-le-mur.yaml
+role.rbac.authorization.k8s.io/allow-to-deploy-in-ns-le-mur created
+
+# Créer un RoleBinding pour associer l'utilisateur pippin au Role créé précédemment
+
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: allow-pippin-to-deploy-in-ns-le-mur-rolebinding
+  namespace: le-mur
+subjects:
+- kind: User
+  name: pippin
+  apiGroup: ""
+roleRef:
+  kind: Role
+  name: allow-to-deploy-in-ns-le-mur
+  apiGroup: ""
+allow-pippin-to-deploy-in-ns-le-mur-rolebinding.yaml
+
+ kubectl create -f allow-pippin-to-deploy-in-ns-le-mur-rolebinding.yaml
+rolebinding.rbac.authorization.k8s.io/deployment-in-le-mur-for-pippin 
+created
+
+# Vérifier si l'utilisateur pippin possède maintenant le droit de lister les Pods dans les Namespaces le-mur et les-marcheurs-blancs
+ kubectl auth can-i create pod --as=pippin --namespace=le-mur
+yes
+
+ kubectl auth can-i create pod --as=pippin --namespace=les-marcheurs-blancs
+no
+
+
+## Test des règles RBAC
+
+# Rebasculer sur le contexte pippin: utiliser le contexte pippin
+ kubectl config use-context pippin
+Switched to context "pippin".
+
+# Créer un Deployment dans le Namespace le-mur
+
+ kubectl create deployment --namespace le-mur \
+    --image httpd pippin-httpd
+deployment "pippin-httpd" created
+
+# Lister les Pods
+
+NAME                            READY   STATUS    RESTARTS   AGE
+pippin-httpd-6598699f78-trmrw   1/1     Running   0          17s
+  
+
+# Créer un Deployment dans le Namespace les-marcheurs-blancs
+ kubectl create deployment --namespace les-marcheurs-blancs \
+    --image httpd pippin-httpd
+Error from server (Forbidden): deployments.apps is forbidden:
+User "pippin" cannot create resource "deployments"
+in API group "apps" in the namespace "les-marcheurs-blancs"
+
+
+
+
+

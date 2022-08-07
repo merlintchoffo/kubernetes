@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mysql-volume
+spec:
+  containers:
+  - image: mysql
+    name: mysql
+    volumeMounts:
+    - mountPath: /var/lib/mysql
+      name: mysql-data
+    env:
+      - name: MYSQL_ROOT_PASSWORD
+        value: betaacceisorsysk8s
+      - name: MYSQL_DATABASE
+        value: orsystraining
+      - name: MYSQL_USER
+        value: pix
+      - name: MYSQL_PASSWORD
+        value: acceisorsysk8s
+  volumes:
+  - name: mysql-data
+    hostPath:
+      # chemin du dossier sur l'hôte
+      path: /data-volume
+      # ce champ est optionnel
+      type: Directory
