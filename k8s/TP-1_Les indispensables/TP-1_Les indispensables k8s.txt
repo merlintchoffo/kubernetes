@@ -1,6 +1,7 @@
 ### TP-1 Les indispensables dans k8s
 
 Pointeurs utiles
+https://artifacthub.io/packages/helm/bitnami/wordpress
 https://killercoda.com/playgrounds/scenario/kubernetes
 https://cheatsheet.dennyzhang.com/cheatsheet-minikube-a4
 https://blog.alterway.fr/le-point-sur-les-container-runtimes.html
