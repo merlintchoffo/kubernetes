@@ -1,6 +1,7 @@
 ### TP-1 Les indispensables dans k8s
 
 Pointeurs utiles
+https://killercoda.com/playgrounds/scenario/kubernetes
 https://cheatsheet.dennyzhang.com/cheatsheet-minikube-a4
 https://blog.alterway.fr/le-point-sur-les-container-runtimes.html
 https://kubernetes.io/fr/docs/reference/kubectl/cheatsheet/#contexte-et-configuration-de-kubectl
