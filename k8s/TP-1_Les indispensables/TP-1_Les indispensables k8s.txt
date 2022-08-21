@@ -127,3 +127,37 @@ Si erreur liée au démarrage du service (systemd) cri-docker.service cri-docker
  sudo kubectl get pods
  sudo kubectl get nodes
  sudo kubectl get nodes -o wide
+ 
+ [centos@b2-15-uk1 ~]$ cat .kube/config
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority: /home/centos/.minikube/ca.crt
+    extensions:
+    - extension:
+        last-update: Sun, 21 Aug 2022 13:42:08 UTC
+        provider: minikube.sigs.k8s.io
+        version: v1.26.1
+      name: cluster_info
+    server: https://51.89.225.82:8443
+  name: minikube
+contexts:
+- context:
+    cluster: minikube
+    extensions:
+    - extension:
+        last-update: Sun, 21 Aug 2022 13:42:08 UTC
+        provider: minikube.sigs.k8s.io
+        version: v1.26.1
+      name: context_info
+    namespace: default
+    user: minikube
+  name: minikube
+current-context: minikube
+kind: Config
+preferences: {}
+users:
+- name: minikube
+  user:
+    client-certificate: /home/centos/.minikube/profiles/minikube/client.crt
+    client-key: /home/centos/.minikube/profiles/minikube/client.key
