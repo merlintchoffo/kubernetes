@@ -100,8 +100,10 @@ which crictl
 sudo mv /usr/local/bin/crictl /usr/bin/
 
 (2) minikube start --driver=none
+Si erreur liée au démarrage du service (systemd) cri-docker.service cri-docker.socket, consulter https://pychao.com/2021/02/24/difference-between-partof-and-bindsto-in-a-systemd-unit/
+
  docker ps
-docker images
+ docker images
 
 * minikube v1.26.0 on Centos 7.9.2009 (kvm/amd64)
 * Using the none driver based on existing profile
