@@ -4,6 +4,7 @@ Pointeurs utiles
 https://artifacthub.io/packages/helm/bitnami/wordpress
 https://docs.bitnami.com/kubernetes/get-started-kubernetes/
 https://killercoda.com/playgrounds/scenario/kubernetes
+https://itnext.io/katacoda-alternative-1d33599af75f
 https://cheatsheet.dennyzhang.com/cheatsheet-minikube-a4
 https://blog.alterway.fr/le-point-sur-les-container-runtimes.html
 https://kubernetes.io/fr/docs/reference/kubectl/cheatsheet/#contexte-et-configuration-de-kubectl
