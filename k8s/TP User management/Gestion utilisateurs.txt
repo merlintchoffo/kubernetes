@@ -19,6 +19,7 @@
  * https://kubernetes.io/docs/reference/access-authn-authz/certificate-signing-requests/
  * https://cloud.google.com/kubernetes-engine/docs/deprecations/apis-1-22  <--  voir signataires Kubernetes connus
  * https://www.pulumi.com/registry/packages/kubernetes/api-docs/certificates/v1/certificatesigningrequest/
+ * https://betterprogramming.pub/k8s-tips-give-access-to-your-clusterwith-a-client-certificate-dfb3b71a76fe
 
 
 ## Création des Namespaces
