@@ -82,7 +82,7 @@ certificatesigningrequest.certificates.k8s.io/pippin created
  Vérifier l'état de la ressource CertificateSigningRequest :
  kubectl get csr
 NAME   AGE     SIGNERNAME                            REQUESTOR       CONDITION
-pippin   5m49s   kubernetes.io/kube-apiserver-client   minikube-user   Pending
+pippin   5m49s   kubernetes.io/kube-apiserver-client   minikube-user   Pending       <-- en attente d'approbation
 
  Approuver la ressource CertificateSigningRequest :
  kubectl certificate approve pippin
@@ -91,7 +91,7 @@ certificatesigningrequest.certificates.k8s.io/pippin approved
  Vérifier l'état de la ressource CertificateSigningRequest :
  kubectl get csr
 NAME   AGE   SIGNERNAME                            REQUESTOR       CONDITION
-pippin   14m   kubernetes.io/kube-apiserver-client   minikube-user   Approved,Issued
+pippin   14m   kubernetes.io/kube-apiserver-client   minikube-user   Approved,Issued   <-- approuvé
 
  Extraire le certificat signé de la ressource CertificateSigningRequest :
  1ère méthode:
