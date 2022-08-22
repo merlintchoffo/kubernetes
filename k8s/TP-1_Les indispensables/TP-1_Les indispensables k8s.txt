@@ -37,7 +37,7 @@ sudo curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s
 sudo chmod +x kubectl
 sudo mv kubectl  /usr/bin/
 sudo echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
-si permission denied, essayer à la place:
+si permission denied, essayer à la place: sysctl net.bridge.bridge-nf-call-iptables=1  <-- équivaut aux 3 cmd suivantes
 vi /etc/sysctl.conf
 net.bridge.bridge-nf-call-iptables = 1
 sysctl -p
