@@ -15,6 +15,7 @@ https://kubernetes.io/blog/2022/02/17/dockershim-faq/
 https://www.mirantis.com/blog/how-to-install-cri-dockerd-and-migrate-nodes-from-dockershim
 https://ubiqube.com/fr/dockershim-the-despair-of-depreciation-and-the-death-of-docker/
 https://computingforgeeks.com/install-mirantis-cri-dockerd-as-docker-engine-shim-for-kubernetes/
+https://kubernetes.io/fr/docs/setup/production-environment/tools/kubeadm/_print/
 
 ### Composants et installation de kubernetes
 Pré-requis :
