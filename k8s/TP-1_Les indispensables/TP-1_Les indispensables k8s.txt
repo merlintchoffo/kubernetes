@@ -107,12 +107,19 @@ sudo mv /usr/local/bin/crictl /usr/bin/
 
 (2) minikube start --driver=none  <-- cas d'erreurs possibles : minikube v1.26.1
 a) Si erreur liée au démarrage du service (systemd) cri-docker.service cri-docker.socket, consulter https://pychao.com/2021/02/24/difference-between-partof-and-bindsto-in-a-systemd-unit/
-b) cas particulier : kubernetest 1.24.3 où le message d'erreur dans la console requiert la commande
+b) cas particulier : kubernetes 1.24.3 où le message d'erreur dans la console requiert la commande  <-- To do
 sudo echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
 si permission denied, essayer à la place: sysctl net.bridge.bridge-nf-call-iptables=1  <-- équivaut aux 3 cmd suivantes
 vi /etc/sysctl.conf
 net.bridge.bridge-nf-call-iptables = 1
 sysctl -p
+c) X Exiting due to RUNTIME_ENABLE: sudo systemctl restart cri-docker: exit status 1
+stdout:
+
+stderr:
+A dependency job for cri-docker.service failed. See 'journalctl -xe' for details. <-- To do
+sudo cp /usr/local/bin/cri-dockerd /usr/bin/
+minikube start --driver=none --network-plugin=cni  <-- démarrage minikube prenant en charge le cni network
 
  docker ps
  docker images
