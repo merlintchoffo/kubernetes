@@ -105,7 +105,7 @@ rm -f crictl-$VERSION-linux-amd64.tar.gz
 which crictl
 sudo mv /usr/local/bin/crictl /usr/bin/
 
-(2) minikube start --driver=none  <-- cas d'erreurs possibles
+(2) minikube start --driver=none  <-- cas d'erreurs possibles : minikube v1.26.1
 a) Si erreur liée au démarrage du service (systemd) cri-docker.service cri-docker.socket, consulter https://pychao.com/2021/02/24/difference-between-partof-and-bindsto-in-a-systemd-unit/
 b) cas particulier : kubernetest 1.24.3 où le message d'erreur dans la console requiert la commande
 sudo echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
