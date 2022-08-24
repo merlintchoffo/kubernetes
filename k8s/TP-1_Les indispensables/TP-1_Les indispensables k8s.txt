@@ -105,21 +105,7 @@ rm -f crictl-$VERSION-linux-amd64.tar.gz
 which crictl
 sudo mv /usr/local/bin/crictl /usr/bin/
 
-(2) minikube start --driver=none  <-- cas d'erreurs possibles : minikube v1.26.1
-a) Si erreur liée au démarrage du service (systemd) cri-docker.service cri-docker.socket, consulter https://pychao.com/2021/02/24/difference-between-partof-and-bindsto-in-a-systemd-unit/
-b) cas particulier : kubernetes 1.24.3 où le message d'erreur dans la console requiert la commande  <-- To do
-sudo echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
-si permission denied, essayer à la place: sysctl net.bridge.bridge-nf-call-iptables=1  <-- équivaut aux 3 cmd suivantes
-vi /etc/sysctl.conf
-net.bridge.bridge-nf-call-iptables = 1
-sysctl -p
-c) X Exiting due to RUNTIME_ENABLE: sudo systemctl restart cri-docker: exit status 1
-stdout:
-
-stderr:
-A dependency job for cri-docker.service failed. See 'journalctl -xe' for details. <-- To do
-sudo cp /usr/local/bin/cri-dockerd /usr/bin/
-minikube start --driver=none --network-plugin=cni  <-- démarrage minikube prenant en charge le cni network
+(2) minikube start --driver=none  <-- voir workaround ci-dessous : minikube v1.26.1
 
  docker ps
  docker images
@@ -147,6 +133,36 @@ minikube start --driver=none --network-plugin=cni  <-- démarrage minikube prena
  sudo kubectl get nodes
  sudo kubectl get nodes -o wide
  
+## Workarounds commande minikube et arguments...
+
+Liens utiles
+ * https://pychao.com/2021/02/24/difference-between-partof-and-bindsto-in-a-systemd-unit/
+ * https://kubernetes.io/fr/docs/setup/learning-environment/minikube/
+ 
+1) X Exiting due to RUNTIME_ENABLE: sudo systemctl restart cri-docker: exit status 1
+...
+stderr:
+A dependency job for cri-docker.service failed. See 'journalctl -xe' for details. <-- To do
+sudo cp /usr/local/bin/cri-dockerd /usr/bin/
+
+2) cas particulier : kubernetes 1.24.3 où le message d'erreur dans la console requiert la commande  <-- To do
+sudo echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+si permission denied, essayer à la place: sysctl net.bridge.bridge-nf-call-iptables=1  <-- équivaut aux 3 cmd suivantes
+vi /etc/sysctl.conf
+net.bridge.bridge-nf-call-iptables = 1
+sysctl -p
+
+3) coredns stuck at ContainerCreating or Pending
+kubectl get all -n kube-system
+NAME                                    READY   STATUS    RESTARTS      AGE
+pod/coredns-6d4b75cb6d-2ccdm            0/1     Pending   0             47m  <-- il faut régler ce problème 
+minikube start --driver=none --network-plugin=cni --enable-default-cni <-- démarrage minikube prenant en charge le cni network par défaut
+
+kubectl get all -n kube-system
+NAME                                    READY   STATUS    RESTARTS      AGE
+pod/coredns-6d4b75cb6d-2ccdm            1/1     Running   0             48m
+
+
  [centos@b2-15-uk1 ~]$ cat .kube/config
 apiVersion: v1
 clusters:
