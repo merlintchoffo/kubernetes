@@ -1,0 +1,11 @@
+minikube start --driver=none --network-plugin=cni --enable-default-cni 
+kubectl get pods --namespace=kube-system -l k8s-app=kube-dns  <-- Check if the DNS pod is running 
+kubectl exec -it webapp-75bb48897d-8t4nw -- sh
+/ # cat /etc/resolv.conf
+ nameserver 10.96.0.10
+ search default.svc.cluster.local svc.cluster.local cluster.local openstacklocal
+ options ndots:5
+/ #
+kubectl get all -n kube-system
+NAME               TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)                
+service/kube-dns   ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP,9153/TCP  <-- correspond à l'IP plus haut dans le container
