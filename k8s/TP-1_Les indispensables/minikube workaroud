@@ -1,0 +1,2 @@
+Si minikube bloque au démarrage:
+faire "minikube delete --all" et redémarrer minikube "minikube start --driver=none --cni=bridge"
