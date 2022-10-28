@@ -1,4 +1,7 @@
-Minikube bloque au démarrage:
+# Service discovery -> Kubernetes: Pods Can't Resolve Hostnames
+kubectl -n kube-system rollout restart deployment coredns
+
+# Minikube stuck at starting :
 [centos@b2-15-uk1 ~]$ minikube status
 minikube
 type: Control Plane
