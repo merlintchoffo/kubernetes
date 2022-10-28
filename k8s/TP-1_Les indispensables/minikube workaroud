@@ -1,2 +1,18 @@
-Si minikube bloque au démarrage:
-faire "minikube delete --all" et redémarrer minikube "minikube start --driver=none --cni=bridge"
+Minikube bloque au démarrage:
+[centos@b2-15-uk1 ~]$ minikube status
+minikube
+type: Control Plane
+host: Running
+kubelet: Running
+apiserver: Stopped
+kubeconfig: Configured
+
+Faire "minikube delete --all" et redémarrer minikube "minikube start --driver=none --cni=bridge"
+
+[centos@b2-15-uk1 ~]$ minikube status
+minikube
+type: Control Plane
+host: Running
+kubelet: Running
+apiserver: Running
+kubeconfig: Configured
