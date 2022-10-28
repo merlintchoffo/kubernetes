@@ -1,0 +1,15 @@
+Separation of concerns
+
+Using the init container approach means that we would have at least two different container images; an image for the init container, 
+which includes all the tooling for setup, and the other is the application image. Having separate images allows us to distribute ownership of 
+the images to different teams.
+#
+Security
+
+Using init containers can bring some security benefits. Let’s assume that the app requires some assets from a git repository or cloud storage. 
+Instead of giving access to the secrets/credentials to the app container, where it might get accessed by an unauthorized party, we can only 
+provide access to the init container. Reducing access means that exposure of the secrets/credentials is short-lived and less accessible.
+
+Another aspect is that now we don’t need to install tools that would only be used when the pod starts. Reducing the number of packages and tools 
+reduces the attack surface. By moving the tools required at startup to init containers, you can use distroless images for your apps and let the 
+init containers work on those tasks.
