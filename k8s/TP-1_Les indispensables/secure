@@ -12,4 +12,4 @@ ex d'une règle : checks/runAsPrivileged.yaml qui dit que les pods ne doivent pa
 Vous pouvez créer vos propres règles en fonction de votre cas d'usage, en fonction du type de gouvernance que vous souhaitez faire appliquer
 au sein de votre SI.
 # Aller jeter un oeil sur les pods Polaris de Fairwinds; leur pod vérifient toutes les règles c'est-à-dire ils sont parfaitement bien déployés et suivent les 
-best practices ! -> on n'est jamais mieux servi que par soi-m
+best practices ! -> on n'est jamais mieux servi que par soi-même ;)
