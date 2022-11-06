@@ -1,0 +1,13 @@
+### memo
+ ## Polaris: https://polaris.docs.fairwinds.com/dashboard/#using-the-dashboard
+# commande pour installer polaris
+helm repo add fairwinds-stable https://charts.fairwinds.com/stable
+helm upgrade --install polaris fairwinds-stable/polaris --namespace polaris --create-namespace
+kubectl port-forward --namespace polaris svc/polaris-dashboard 8080:80 --address 0.0.0.0
+# allez dans le browser http://198.244.152.11:8080/
+# Créer un déploiement avec nginx dans le ns par défaut : kubectl run nginx --image=nginx --> kubectl get po
+# Actualiser le dashboard dans polaris ( remarquer par exemple que l'image nginx n'a pas été taggué et polaris le met en danger)
+# voir le projet github Polaris de Fairwinds, les rules sont définis dans le dossier checks;
+ex d'une règle : checks/runAsPrivileged.yaml qui dit que les pods ne doivent pas avoir cette propriété ...
+Vous pouvez créer vos propres règles en fonction de votre cas d'usage, en fonction du type de gouvernance que vous souhaitez faire appliquer
+au sein de votre SI.
